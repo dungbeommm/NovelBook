@@ -1,7 +1,7 @@
 <h1 align="center">NovelBook</h1>
 
 <p align="center">
-  <a href="https://github.com/dungbeommm/NovelBook/releases/tag/v0.01-beta"><img src="https://img.shields.io/github/v/release/dungbeommm/NovelBook?include_prereleases&style=for-the-badge&label=Beta&color=7c5cff" alt="Latest beta release"></a>
+  <a href="https://github.com/dungbeommm/NovelBook/releases/tag/v0.02-beta"><img src="https://img.shields.io/github/v/release/dungbeommm/NovelBook?include_prereleases&style=for-the-badge&label=Beta&color=7c5cff" alt="Latest beta release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/dungbeommm/NovelBook?style=for-the-badge&label=License&color=0e75b6" alt="License"></a>
 </p>
 
@@ -11,10 +11,10 @@
 Đọc truyện trực tuyến, nhập sách EPUB và nghe truyện bằng giọng đọc tổng hợp, trong một ứng dụng Android dùng Kotlin và Jetpack Compose.
 </p>
 
-<p align="center"><a href="https://github.com/dungbeommm/NovelBook/releases/tag/v0.01-beta"><strong>⬇ Tải NovelBook beta mới nhất</strong></a></p>
+<p align="center"><a href="https://github.com/dungbeommm/NovelBook/releases/tag/v0.02-beta"><strong>⬇ Tải NovelBook beta mới nhất</strong></a></p>
 
 > [!NOTE]
-> NovelBook đang ở giai đoạn beta. Bản đầu tiên là **0.01 beta**.
+> NovelBook đang ở giai đoạn beta. Bản hiện tại là **0.02 beta**.
 
 ## Tính năng
 
@@ -29,9 +29,9 @@
 
 ## Tải xuống
 
-Tải APK Android tại [GitHub Releases](https://github.com/dungbeommm/NovelBook/releases/tag/v0.01-beta).
+Tải APK Android tại [GitHub Releases](https://github.com/dungbeommm/NovelBook/releases/tag/v0.02-beta).
 
-Bản beta đầu tiên: [NovelBook-v0.01-beta.apk](https://github.com/dungbeommm/NovelBook/releases/download/v0.01-beta/NovelBook-v0.01-beta.apk)
+Bản beta hiện tại: [NovelBook-v0.02-beta.apk](https://github.com/dungbeommm/NovelBook/releases/download/v0.02-beta/NovelBook-v0.02-beta.apk)
 
 Thiết bị cần Android 8.0 trở lên. APK hiện được build cho ARM64.
 
@@ -43,7 +43,7 @@ Cần JDK 25, Android SDK 36, Android SDK 37.2 cho module Gecko và Android Buil
 ./gradlew testDebugUnitTest standaloneJavaTests lintDebug assembleDebug
 ```
 
-APK debug xuất tại `app/build/outputs/apk/debug/`. GitHub Actions kiểm tra các thay đổi trên `main` và tạo bản phát hành có ký khi push tag dạng `v*`. Ví dụ phiên bản `0.01 beta` dùng tag `v0.01-beta`.
+APK debug xuất tại `app/build/outputs/apk/debug/`. GitHub Actions kiểm tra các thay đổi trên `main` và tạo bản phát hành có ký khi push tag dạng `v*`. Ví dụ phiên bản `0.02 beta` dùng tag `v0.02-beta`.
 
 ## Cấu trúc mã nguồn
 
