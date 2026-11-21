@@ -1,0 +1,199 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.plugin.serialization"
+    id "org.jetbrains.kotlin.plugin.compose"
+}
+
+android {
+    namespace = "vn.tramtruyen.reader"
+    dynamicFeatures = [":gecko"]
+
+    // Keep resources in each master APK for sideloading. Native libraries can
+    // stay in the master APK or move to a separate ABI split.
+    def standaloneGeckoSplit = providers.gradleProperty("standaloneGeckoSplit").map { it.toBoolean() }.getOrElse(false)
+    def splitGeckoByAbi = providers.gradleProperty("splitGeckoByAbi").map { it.toBoolean() }.getOrElse(false)
+    if (standaloneGeckoSplit || splitGeckoByAbi) {
+        bundle {
+            abi { enableSplit = !standaloneGeckoSplit }
+            density { enableSplit = false }
+            language { enableSplit = false }
+        }
+    }
+    compileSdk = 36
+
+    // Release signing is supplied only by local/GitHub environment variables.
+    // No key or password is committed to the repository.
+    def releaseStoreFile = System.getenv("RELEASE_STORE_FILE")
+    def releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+    def optimizeRelease = !providers.gradleProperty("unminifiedRelease").map { it.toBoolean() }.getOrElse(false)
+    def hasReleaseSigning = [
+        releaseStoreFile,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword,
+    ].every { it != null && !it.isBlank() }
+
+    defaultConfig {
+        // Duy trì định danh cài đặt để hỗ trợ cập nhật từ 1.007 với cùng chữ ký.
+        applicationId = "com.novel.reader.app"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 138
+        versionName = "1.015"
+        resValue "string", "gecko_module_download_url",
+            providers.gradleProperty("geckoModuleUrl").getOrElse(
+                "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/gecko/GeckoBrowser.apks.zip"
+            )
+        resValue "string", "web_parser_bundle_download_url",
+            providers.gradleProperty("webParserBundleUrl").getOrElse(
+                "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/parsers/WebParser.json"
+            )
+        resValue "string", "adblock_extension_download_url",
+            providers.gradleProperty("adblockExtensionUrl").getOrElse(
+                "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/extensions/adblock/AdBlockExtension.json"
+            )
+        vectorDrawables { useSupportLibrary = true }
+        // Chi giu tieng Viet + Anh: bot vai tram file resource -> tra cuu
+        // resource nhanh hon va APK nhe hon.
+        resConfigs "vi", "en"
+        ndk {
+            // Chỉ đóng gói native arm64-v8a cho APK gọn và đúng mục tiêu thiết bị mới.
+            abiFilters providers.gradleProperty("readerAbi").getOrElse("arm64-v8a")
+        }
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // Giữ cùng applicationId com.novel.reader.app cho debug và release.
+        }
+        release {
+            debuggable = false
+            jniDebuggable = false
+            zipAlignEnabled = true
+            minifyEnabled = optimizeRelease
+            shrinkResources = optimizeRelease
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            ndk { debugSymbolLevel = "NONE" }   // bo bang ky hieu native khoi ban phat hanh
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.release
+            }
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = false
+        resValues = true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    packaging {
+        // Nap thu vien native thang tu APK, khong giai nen ra data -> mo app nhanh hon.
+        jniLibs { useLegacyPackaging = false }
+        resources {
+            excludes += [
+                "META-INF/*.kotlin_module", "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST",
+                "META-INF/versions/**", "META-INF/io.netty.versions.properties",
+                "/META-INF/{AL2.0,LGPL2.1}"
+            ]
+        }
+    }
+}
+
+dependencies {
+    implementation "com.google.android.play:feature-delivery:2.1.0"
+    // ---- Backend (Kotlin: scraper, HTTP, TTS cloud, WebView, MediaSession) ----
+    implementation "androidx.core:core-ktx:1.18.0"
+    implementation "androidx.activity:activity-ktx:1.13.0"
+    implementation "androidx.webkit:webkit:1.15.0"          // dung boi ProxyManager + headless scraper
+    implementation "androidx.media:media:1.7.0"            // MediaSession / thong bao dieu khien
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0"
+    implementation "org.jsoup:jsoup:1.23.1"
+    implementation "com.squareup.okhttp3:okhttp:5.4.0"
+    implementation "com.squareup.okhttp3:okhttp-dnsoverhttps:5.4.0"
+    // Neural TTS chạy hoàn toàn trên thiết bị (VITS/Piper + eSpeak-NG).
+    implementation "com.bihe0832.android:lib-sherpa-onnx:8.5.4"
+
+    // ---- Giao dien Jetpack Compose (Material 3, thay hoan toan WebView) ----
+    def composeBom = platform("androidx.compose:compose-bom:2026.05.01")
+    implementation composeBom
+    implementation "androidx.compose.ui:ui"
+    implementation "androidx.compose.ui:ui-graphics"
+    implementation "androidx.compose.ui:ui-tooling-preview"
+    implementation "androidx.compose.material3:material3"
+    implementation "androidx.compose.material:material-icons-extended"
+    implementation "androidx.activity:activity-compose:1.13.0"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.10.0"
+    implementation "androidx.lifecycle:lifecycle-runtime-compose:2.10.0"
+
+    // Dynamic color (Material You / Monet) + tai anh bia
+    implementation "com.materialkolor:material-kolor:4.1.1"
+    implementation "io.coil-kt:coil-compose:2.7.0"
+    // Trich mau chu dao tu anh bia (nguon mau cho ca giao dien)
+    implementation "androidx.palette:palette-ktx:1.0.0"
+
+    // Luu cai dat (theme, giong doc...) — DataStore
+    implementation "androidx.datastore:datastore-preferences:1.2.1"
+
+    // Cai ho so khoi dong (baseline profile) tren Android 7-11, noi he thong
+    // khong tu doc ho so trong APK.
+    implementation "androidx.profileinstaller:profileinstaller:1.4.1"
+
+    testImplementation "junit:junit:4.13.2"
+
+    debugImplementation "androidx.compose.ui:ui-tooling"
+}
+
+// Compatibility for AndroidIDE/older IDE importers that still request this
+// Kotlin-DSL model task even though this project uses Groovy build scripts.
+if (tasks.findByName("prepareKotlinBuildScriptModel") == null) {
+    tasks.register("prepareKotlinBuildScriptModel") {
+        group = "ide"
+        description = "Compatibility no-op for IDE Gradle model import"
+    }
+}
+
+// Keep the three protocol/concurrency regression programs in tests-java part of
+// the normal verification lifecycle instead of leaving them as manual scripts.
+def standaloneJavaOutput = layout.buildDirectory.dir("classes/standaloneJavaTest")
+tasks.register("compileStandaloneJavaTests", JavaCompile) {
+    source = fileTree(rootProject.file("tests-java")) { include "**/*.java" }
+    destinationDirectory = standaloneJavaOutput
+    classpath = files()
+    options.release = 17
+    options.encoding = "UTF-8"
+}
+def standalonePrograms = ["CapcutNormalizerTest", "CapcutParallelModelTest", "CapcutProtocolTest"]
+def standaloneRunTasks = standalonePrograms.collect { testClass ->
+    tasks.register("run${testClass}", JavaExec) {
+        group = "verification"
+        dependsOn "compileStandaloneJavaTests"
+        classpath = files(standaloneJavaOutput)
+        mainClass = testClass
+    }
+}
+tasks.register("standaloneJavaTests") {
+    group = "verification"
+    description = "Runs standalone CapCut protocol and concurrency regression tests."
+    dependsOn standaloneRunTasks
+}
+tasks.named("check").configure { dependsOn "standaloneJavaTests" }
