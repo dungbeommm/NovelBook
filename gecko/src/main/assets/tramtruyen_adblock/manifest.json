@@ -1,0 +1,15 @@
+{
+  "manifest_version": 2,
+  "name": "Trạm Truyện Chặn quảng cáo",
+  "version": "1.0",
+  "browser_specific_settings": {
+    "gecko": { "id": "adblock@tramtruyen.vn" }
+  },
+  "permissions": ["webRequest", "webRequestBlocking", "http://*/*", "https://*/*"],
+  "background": { "scripts": ["adblock_requests.js"] },
+  "content_scripts": [{
+    "matches": ["http://*/*", "https://*/*"],
+    "js": ["adblock_cosmetic.js", "browser_ad_guard.js"],
+    "run_at": "document_end"
+  }]
+}

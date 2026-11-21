@@ -1,0 +1,22 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "https://maven.mozilla.org/maven2/"
+            content { includeGroup("org.mozilla.geckoview") }
+        }
+    }
+}
+
+rootProject.name = "TramTruyenReader"
+include ":app"
+include ":gecko"

@@ -1,0 +1,33 @@
+{
+  "id": "ntruyen.lat",
+  "name": "ntruyen.lat",
+  "version": 4,
+  "engine": 4,
+  "domains": [
+    "sstruyen.lat",
+    "ntruyen.lat",
+    "ntruyen.xyz"
+  ],
+  "use_webview": true,
+  "may_need_vpn": false,
+  "use_html_parser": true,
+  "logo": "https://ntruyen.xyz/imgs/logo.webp",
+  "homepage_url": "https://sstruyen.lat",
+  "capabilities": [
+    "resolve_input",
+    "story",
+    "chapter",
+    "chapter_list",
+    "random_chapter",
+    "cover",
+    "cover_smart",
+    "navigation",
+    "search",
+    "story_metadata",
+    "chapter_pagination",
+    "chapter_images",
+    "rich_search",
+    "toc_ajax",
+    "legacy_detail_compat"
+  ]
+}

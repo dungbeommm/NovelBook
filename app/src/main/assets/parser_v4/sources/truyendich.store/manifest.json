@@ -1,0 +1,36 @@
+{
+  "id": "truyendich.store",
+  "name": "truyendich.store",
+  "version": 4,
+  "engine": 4,
+  "domains": [
+    "truyendich.fit",
+    "truyendich.store",
+    "truyendich.ai",
+    "truyendich.live",
+    "truyendich.vip",
+    "truyendich.space"
+  ],
+  "use_webview": true,
+  "may_need_vpn": false,
+  "use_html_parser": true,
+  "logo": "https://www.google.com/s2/favicons?sz=128&domain=truyendich.ai",
+  "homepage_url": "https://truyendich.fit",
+  "capabilities": [
+    "resolve_input",
+    "story",
+    "chapter",
+    "chapter_list",
+    "random_chapter",
+    "cover",
+    "cover_smart",
+    "navigation",
+    "search",
+    "story_metadata",
+    "chapter_pagination",
+    "chapter_images",
+    "rich_search",
+    "toc_ajax",
+    "legacy_detail_compat"
+  ]
+}

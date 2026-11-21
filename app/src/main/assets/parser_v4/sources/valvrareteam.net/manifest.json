@@ -1,0 +1,30 @@
+{
+  "id": "valvrareteam.net",
+  "name": "Valvrareteam",
+  "version": 4,
+  "engine": 4,
+  "domains": [
+    "valvrareteam.net",
+    "www.valvrareteam.net"
+  ],
+  "use_webview": false,
+  "may_need_vpn": false,
+  "use_html_parser": true,
+  "logo": "https://valvrareteam.net/favicon.ico",
+  "homepage_url": "https://valvrareteam.net",
+  "capabilities": [
+    "resolve_input",
+    "story",
+    "chapter",
+    "chapter_list",
+    "random_chapter",
+    "cover",
+    "cover_smart",
+    "navigation",
+    "search",
+    "story_metadata",
+    "chapter_images",
+    "rich_search",
+    "legacy_detail_compat"
+  ]
+}

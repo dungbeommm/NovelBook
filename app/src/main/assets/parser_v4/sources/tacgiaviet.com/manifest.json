@@ -1,0 +1,32 @@
+{
+  "id": "tacgiaviet.com",
+  "name": "tacgiaviet.com",
+  "version": 4,
+  "engine": 4,
+  "domains": [
+    "tacgiaviet.com",
+    "www.tacgiaviet.com"
+  ],
+  "use_webview": false,
+  "may_need_vpn": false,
+  "use_html_parser": true,
+  "logo": "https://www.google.com/s2/favicons?sz=128&domain=tacgiaviet.com",
+  "homepage_url": "https://tacgiaviet.com",
+  "capabilities": [
+    "resolve_input",
+    "story",
+    "chapter",
+    "chapter_list",
+    "random_chapter",
+    "cover",
+    "cover_smart",
+    "navigation",
+    "search",
+    "story_metadata",
+    "chapter_pagination",
+    "chapter_images",
+    "rich_search",
+    "toc_ajax",
+    "legacy_detail_compat"
+  ]
+}
