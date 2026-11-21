@@ -43,7 +43,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Verify and build debug APK
-        run: ./gradlew testDebugUnitTest standaloneJavaTests lintDebug assembleDebug --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest standaloneJavaTests lintDebug assembleDebug --stacktrace
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
@@ -102,6 +104,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          chmod +x gradlew
           test -n "$RELEASE_STORE_PASSWORD" \
             && test -n "$RELEASE_KEY_ALIAS" \
             && test -n "$RELEASE_KEY_PASSWORD" || {
