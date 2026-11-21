@@ -132,6 +132,12 @@ jobs:
           base_apk="TramTruyenReader-${GITHUB_REF_NAME}.apk"
           unzip -p "$apk_set" splits/base-master.apk > "$base_apk"
           unzip -p "$apk_set" splits/gecko-master.apk > TramTruyen-Gecko.apk
+          apk_version="$(${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/aapt dump badging "$base_apk" |
+            sed -n "s/^package: .*versionName='\([^']*\)'.*/\1/p")"
+          if [[ "$GITHUB_REF_NAME" != "v$apk_version" ]]; then
+            echo "::error::Release tag must match APK versionName ($apk_version)"
+            exit 1
+          fi
           unzip -Z1 TramTruyen-Gecko.apk | grep -Fx 'lib/arm64-v8a/libxul.so'
           unzip -Z1 TramTruyen-Gecko.apk | grep -Fx 'assets/stv_reader/manifest.json'
           for apk in "$base_apk" TramTruyen-Gecko.apk; do
@@ -139,10 +145,22 @@ jobs:
             "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner" verify --verbose --print-certs "$apk"
           done
 
+      - name: Publish Gecko to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [[ -z "$HF_TOKEN" ]]; then
+            echo "::error::Missing repository secret HF_TOKEN"
+            exit 1
+          fi
+          pipx run --spec 'huggingface-hub==2.4.0' hf buckets cp \
+            ./TramTruyen-Gecko.apk \
+            "hf://buckets/uri410/NovelBook_Cloud/runtime/gecko/${GITHUB_REF_NAME}/TramTruyen-Gecko.apk"
+          curl --fail --location --retry 3 --head \
+            "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/gecko/${GITHUB_REF_NAME}/TramTruyen-Gecko.apk"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: |
-            TramTruyenReader-${{ github.ref_name }}.apk
-            TramTruyen-Gecko.apk
+          files: TramTruyenReader-${{ github.ref_name }}.apk

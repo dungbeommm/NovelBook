@@ -27,10 +27,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Request
-import org.json.JSONObject
 
 object GeckoModuleInstaller {
+    private const val GECKO_BUCKET =
+        "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/gecko"
     private const val MODULE_NAME = "gecko"
     private const val MODULE_APK = "split_gecko.apk"
     private const val ARM64_CONFIG_APK = "split_gecko.config.arm64_v8a.apk"
@@ -65,7 +67,7 @@ object GeckoModuleInstaller {
         installLock.withLock {
             if (!isPackageInstalled(activity)) {
                 check(canInstall(activity)) { "Cho phép Trạm Truyện cài ứng dụng từ nguồn ngoài rồi thử lại." }
-                val url = releaseAssetUrl(activity)
+                val url = moduleDownloadUrl(activity)
                 val downloaded = File.createTempFile("gecko-", ".apk", activity.cacheDir)
                 try {
                     download(url, downloaded, onProgress)
@@ -83,40 +85,22 @@ object GeckoModuleInstaller {
         }
     }
 
-    private suspend fun releaseAssetUrl(activity: Activity): String = withContext(Dispatchers.IO) {
+    private fun moduleDownloadUrl(context: Context): String {
         @Suppress("DEPRECATION")
-        val version = activity.packageManager.getPackageInfo(activity.packageName, 0).versionName
+        val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
         check(!version.isNullOrBlank()) { "Không xác định được phiên bản NovelBook đang cài." }
-        val request = Request.Builder()
-            .url("https://api.github.com/repos/dungbeommm/NovelBook/releases/tags/v$version")
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .header("User-Agent", "NovelBook-Android")
+        return GECKO_BUCKET.toHttpUrl().newBuilder()
+            .addPathSegment("v$version")
+            .addPathSegment("TramTruyen-Gecko.apk")
             .build()
-        client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) {
-                if (response.code == 404) {
-                    "Chưa có GitHub Release v$version cho bản NovelBook này."
-                } else {
-                    "Không tìm thấy bản Gecko trên GitHub (HTTP ${response.code})."
-                }
-            }
-            val release = JSONObject(checkNotNull(response.body).string())
-            val assets = release.getJSONArray("assets")
-            (0 until assets.length())
-                .asSequence()
-                .map(assets::getJSONObject)
-                .firstOrNull { it.optString("name") == "TramTruyen-Gecko.apk" }
-                ?.optString("browser_download_url")
-                ?.takeIf(String::isNotBlank)
-                ?: error("GitHub Release v$version chưa có tệp TramTruyen-Gecko.apk.")
-        }
+            .toString()
     }
 
     private suspend fun download(url: String, apk: File, onProgress: (Int) -> Unit) =
         withContext(Dispatchers.IO) {
             val request = Request.Builder().url(url).build()
             client.newCall(request).execute().use { response ->
+                check(response.code != 404) { "Hugging Face chưa có module Gecko cho bản NovelBook đang cài." }
                 check(response.isSuccessful) { "Không tải được Gecko (HTTP ${response.code})." }
                 val body = response.body
                 val total = body.contentLength()
