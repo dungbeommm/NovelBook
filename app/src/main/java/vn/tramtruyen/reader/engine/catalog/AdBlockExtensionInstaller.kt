@@ -100,7 +100,7 @@ object AdBlockExtensionInstaller {
 
     private suspend fun installJson(context: Context, source: File) = withContext(Dispatchers.IO) {
         val root = JSONObject(source.readText(Charsets.UTF_8))
-        check(root.optString("format") == FORMAT) { "Tệp tải về không phải extension chặn quảng cáo của Trạm Truyện." }
+        check(root.optString("format") == FORMAT) { "Tệp tải về không phải extension chặn quảng cáo của NovelBook." }
         val version = root.optString("package_version").trim()
         check(version.isNotBlank()) { "Extension chặn quảng cáo thiếu số phiên bản." }
         val files = root.optJSONObject("files") ?: error("Extension chặn quảng cáo thiếu các tệp thành phần.")

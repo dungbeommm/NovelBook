@@ -1,4 +1,4 @@
-# Trạm Truyện
+# NovelBook
 
 Ứng dụng Android đọc truyện trực tuyến, nhập EPUB và nghe truyện bằng giọng đọc tổng hợp. Giao diện dùng Kotlin và Jetpack Compose Material 3.
 
@@ -54,5 +54,5 @@ Sáng Tác Việt dùng module Gecko khi module có sẵn. Dùng `./gradlew :app
 1. Quy trình release tạo `TramTruyenReader-v*.apk` và `TramTruyen-Gecko.apk` từ cùng một Android App Bundle với `-PstandaloneGeckoSplit=true`. Thiết lập này giữ các thư viện native và tài nguyên của Gecko trong một split. Hai APK phải đi cùng nhau vì Android kiểm tra package, mã phiên bản và chữ ký khi cài thêm split.
 2. Tạo tag trùng với phiên bản APK, ví dụ `v1.016`. GitHub Actions dùng secret `HF_TOKEN` có quyền ghi bucket `uri410/NovelBook_Cloud` để tải Gecko lên `runtime/gecko/v1.016/TramTruyen-Gecko.apk`, rồi đăng APK chính lên GitHub Releases. App tải Gecko qua đường dẫn `/resolve/runtime/gecko/v<versionName>/TramTruyen-Gecko.apk` trên bucket công khai.
 
-3. Cài APK chính rồi vào **Cài đặt → Trình duyệt & kết nối → Tải module Gecko**. Cấp quyền cài từ nguồn ngoài cho Trạm Truyện nếu Android yêu cầu, sau đó quay lại bấm tải và xác nhận cài đặt. Mở lại app nếu Android khởi động lại tiến trình. Nguồn Sáng Tác Việt sẽ dùng Gecko khi cấu hình nguồn yêu cầu.
+3. Cài APK chính rồi vào **Cài đặt → Trình duyệt & kết nối → Tải module Gecko**. Cấp quyền cài từ nguồn ngoài cho NovelBook nếu Android yêu cầu, sau đó quay lại bấm tải và xác nhận cài đặt. Mở lại app nếu Android khởi động lại tiến trình. Nguồn Sáng Tác Việt sẽ dùng Gecko khi cấu hình nguồn yêu cầu.
 4. Để kiểm tra trước khi đưa lên kho, cài APK chính trên thiết bị ARM64 rồi chạy `adb install-multiple -p com.novel.reader.app TramTruyen-Gecko.apk`. Dùng `adb shell pm path com.novel.reader.app` để xác nhận có `split_gecko.apk`, sau đó mở một chương Sáng Tác Việt trong app. Cài qua nút trong app trên bản chỉ có APK chính để kiểm tra đầy đủ luồng tải và cấp quyền.

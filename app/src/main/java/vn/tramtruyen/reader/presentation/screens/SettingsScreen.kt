@@ -839,7 +839,7 @@ private fun GeckoCard() {
                             error = runCatching {
                                 GeckoModuleInstaller.openInstallPermission(activity)
                                 "Bật quyền cài từ nguồn này, quay lại rồi bấm tải Gecko."
-                            }.getOrElse { "Hãy cấp quyền cài từ nguồn ngoài cho Trạm Truyện trong cài đặt Android." }
+                            }.getOrElse { "Hãy cấp quyền cài từ nguồn ngoài cho NovelBook trong cài đặt Android." }
                             return@FilledTonalButton
                         }
                         error = null
@@ -1603,7 +1603,7 @@ private fun WarpSettingsCard() {
                 else "VPN hệ thống: chưa kết nối", color = cs.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall)
             Text("Tải ứng dụng chính thức, chọn chế độ WARP và bật kết nối trước khi đọc/nghe. " +
-                "Bạn cần xác nhận quyền VPN trong ứng dụng 1.1.1.1. Trạm Truyện không tự bật hoặc tắt WARP.",
+                "Bạn cần xác nhận quyền VPN trong ứng dụng 1.1.1.1. NovelBook không tự bật hoặc tắt WARP.",
                 color = cs.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             Button(onClick = { vn.tramtruyen.reader.engine.WarpIntegration.open(context) },
                 modifier = Modifier.fillMaxWidth()) {

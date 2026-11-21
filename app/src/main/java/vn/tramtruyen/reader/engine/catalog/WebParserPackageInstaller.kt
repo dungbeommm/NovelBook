@@ -92,7 +92,7 @@ object WebParserPackageInstaller {
 
     private suspend fun installJson(context: Context, source: File) = withContext(Dispatchers.IO) {
         val root = JSONObject(source.readText(Charsets.UTF_8))
-        check(root.optString("format") == FORMAT) { "Tệp tải về không phải bộ parser Trạm Truyện." }
+        check(root.optString("format") == FORMAT) { "Tệp tải về không phải bộ parser NovelBook." }
         val packageVersion = root.optString("package_version").trim()
         check(packageVersion.isNotBlank()) { "Bộ parser thiếu số phiên bản." }
 

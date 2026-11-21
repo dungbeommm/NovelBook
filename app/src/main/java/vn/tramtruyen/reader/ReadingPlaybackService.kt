@@ -80,7 +80,7 @@ class ReadingPlaybackService : Service() {
     }
 
     private lateinit var session: MediaSessionCompat
-    private var title = "Trạm Truyện"
+    private var title = "NovelBook"
     private var author = ""
     private var chapter = "\u0110ang \u0111\u1ecdc"
     private var playing = false
@@ -409,7 +409,7 @@ class ReadingPlaybackService : Service() {
             manager.createNotificationChannel(
                 NotificationChannel(
                     ReadingMediaNotifier.CHANNEL_ID,
-                    "Trạm Truyện \u2014 Ph\u00e1t \u00e2m thanh",
+                    "NovelBook \u2014 Ph\u00e1t \u00e2m thanh",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply { setShowBadge(false) }
             )

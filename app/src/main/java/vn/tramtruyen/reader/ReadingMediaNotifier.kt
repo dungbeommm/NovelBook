@@ -42,7 +42,7 @@ class ReadingMediaNotifier(private val activity: ReaderActivity) {
             manager.createNotificationChannel(
                 NotificationChannel(
                     CHANNEL_ID,
-                    "Trạm Truyện \u2014 Ph\u00e1t \u00e2m thanh",
+                    "NovelBook \u2014 Ph\u00e1t \u00e2m thanh",
                     NotificationManager.IMPORTANCE_LOW,
                 ).apply {
                     description = "\u0110i\u1ec1u khi\u1ec3n \u0111\u1ecdc truy\u1ec7n b\u1eb1ng gi\u1ecdng n\u00f3i"

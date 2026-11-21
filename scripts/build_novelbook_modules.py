@@ -181,7 +181,7 @@ def main() -> None:
     }
     write_json(OUTPUT / "manifest.json", manifest)
 
-    readme = """# Trạm Truyện — thành phần tải bổ sung
+    readme = """# NovelBook — thành phần tải bổ sung
 
 `manifest.json` liệt kê đường dẫn, phiên bản, kích thước và SHA-256 của từng gói.
 

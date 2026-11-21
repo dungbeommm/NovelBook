@@ -3263,7 +3263,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val st = s.activeStory
         val meta = PlaybackMetadata(
             storyId = st?.id ?: "",
-            storyTitle = st?.title ?: "Trạm Truyện",
+            storyTitle = st?.title ?: "NovelBook",
             author = st?.author ?: "",
             chapterTitle = s.chapterTitle,
             chapterIndex = s.chapterNumber,

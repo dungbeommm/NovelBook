@@ -70,7 +70,7 @@ data class ChapterUiModel(val index: Int, val title: String, val url: String, va
 
 @Immutable
 data class PlaybackMetadata(
-    val storyId: String = "", val storyTitle: String = "Trạm Truyện", val author: String = "", val chapterTitle: String = "", val chapterIndex: Int = 1, val totalChapters: Int = 0, val coverUrl: String = "", val source: String? = null, val positionMs: Long = 0L, val durationMs: Long = 0L, val speed: Float = 1f, val voiceId: String = vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy.DEFAULT_VOICE, val isPlaying: Boolean = false, val isBuffering: Boolean = false, val hasPrevious: Boolean = false, val hasNext: Boolean = false,
+    val storyId: String = "", val storyTitle: String = "NovelBook", val author: String = "", val chapterTitle: String = "", val chapterIndex: Int = 1, val totalChapters: Int = 0, val coverUrl: String = "", val source: String? = null, val positionMs: Long = 0L, val durationMs: Long = 0L, val speed: Float = 1f, val voiceId: String = vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy.DEFAULT_VOICE, val isPlaying: Boolean = false, val isBuffering: Boolean = false, val hasPrevious: Boolean = false, val hasNext: Boolean = false,
 )
 
 @Immutable data class PasteResult(val story: Story, val source: String)

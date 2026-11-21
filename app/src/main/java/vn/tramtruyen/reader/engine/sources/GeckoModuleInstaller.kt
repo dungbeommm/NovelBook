@@ -66,7 +66,7 @@ object GeckoModuleInstaller {
     ) = withContext(Dispatchers.Main.immediate) {
         installLock.withLock {
             if (!isPackageInstalled(activity)) {
-                check(canInstall(activity)) { "Cho phép Trạm Truyện cài ứng dụng từ nguồn ngoài rồi thử lại." }
+                check(canInstall(activity)) { "Cho phép NovelBook cài ứng dụng từ nguồn ngoài rồi thử lại." }
                 val url = moduleDownloadUrl(activity)
                 val downloaded = File.createTempFile("gecko-", ".apk", activity.cacheDir)
                 try {
@@ -134,7 +134,7 @@ object GeckoModuleInstaller {
                 }
                 check(zip.getEntry("AndroidManifest.xml") != null &&
                     zip.getEntry("assets/stv_reader/manifest.json") != null
-                ) { "Tệp tải về không phải module Gecko của Trạm Truyện." }
+                ) { "Tệp tải về không phải module Gecko của NovelBook." }
                 check(Build.SUPPORTED_ABIS.any { zip.getEntry("lib/$it/libxul.so") != null }) {
                     "Gói Gecko thiếu thư viện phù hợp với kiến trúc thiết bị."
                 }

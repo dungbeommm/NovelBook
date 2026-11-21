@@ -1,6 +1,6 @@
 {
   "manifest_version": 2,
-  "name": "Trạm Truyện Sáng Tác Việt",
+  "name": "NovelBook Sáng Tác Việt",
   "version": "1.0",
   "browser_specific_settings": { "gecko": { "id": "stv-reader@tramtruyen.vn" } },
   "permissions": ["geckoViewAddons", "nativeMessaging", "nativeMessagingFromContent"],
