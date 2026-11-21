@@ -118,6 +118,7 @@ android {
 }
 
 dependencies {
+    implementation "com.google.guava:guava:33.3.1-android"
     implementation "com.google.android.play:feature-delivery:2.1.0"
     // ---- Backend (Kotlin: scraper, HTTP, TTS cloud, WebView, MediaSession) ----
     implementation "androidx.core:core-ktx:1.18.0"

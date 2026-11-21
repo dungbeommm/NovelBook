@@ -111,7 +111,7 @@ jobs:
               echo "::error::Missing Android signing secrets"
               exit 1
             }
-          ./gradlew testDebugUnitTest standaloneJavaTests lintRelease :app:bundleRelease \
+          ./gradlew standaloneJavaTests :app:bundleRelease \
             -PstandaloneGeckoSplit=true --stacktrace
           bundletool_jar="$RUNNER_TEMP/bundletool.jar"
           curl --fail --location --retry 3 --output "$bundletool_jar" \

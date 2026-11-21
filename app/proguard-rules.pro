@@ -35,3 +35,12 @@
 # GeckoFeature resolves these entry points after Android installs the split.
 -keep class vn.tramtruyen.reader.gecko.GeckoBrowserActivity { public <init>(); }
 -keep class vn.tramtruyen.reader.gecko.GeckoLoader { public <init>(); }
+
+# Suppress warnings for missing Play Services / Fido internal optional classes referenced by GeckoView
+-dontwarn com.google.android.apps.common.proguard.SideEffectFree
+-dontwarn com.google.android.gms.common.api.ApiMetadata$Builder
+-dontwarn com.google.android.gms.common.api.ApiMetadata
+-dontwarn com.google.android.gms.common.api.ComplianceOptions$Builder
+-dontwarn com.google.android.gms.common.api.ComplianceOptions
+-dontwarn com.google.android.gms.common.wrappers.AttributionSourceWrapper
+
