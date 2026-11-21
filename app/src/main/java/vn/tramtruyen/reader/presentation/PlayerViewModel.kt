@@ -385,6 +385,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     sizeMb = (m.sizeBytes / 1024 / 1024).toInt(),
                     installed = OfflineTtsModelManager.isInstalled(m.id),
                     source = m.source,
+                    fromVBook = m.fromVBook,
                 )
             }
         }.getOrDefault(emptyList())

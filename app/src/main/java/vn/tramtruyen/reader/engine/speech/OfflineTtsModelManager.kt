@@ -25,6 +25,7 @@ object OfflineTtsModelManager {
         val configChecksum: String = "",
         val demoUrl: String = "",
         val espeakVoiceOverride: String = "",
+        val fromVBook: Boolean = false,
     )
 
     private lateinit var app: Context
@@ -72,6 +73,7 @@ object OfflineTtsModelManager {
                 configChecksum = o.optString("config_checksum", "").lowercase(),
                 demoUrl = o.optString("demo_url").ifBlank { o.optString("demoUrl") },
                 espeakVoiceOverride = o.optString("espeak_voice_override"),
+                fromVBook = o.optBoolean("from_vbook"),
             )
         }
     }

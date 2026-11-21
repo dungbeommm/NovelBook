@@ -35,7 +35,16 @@ data class Story(
 
 @Immutable data class VoiceOption(val id: String, val label: String, val sub: String)
 @Immutable data class VoiceGroup(val name: String, val voices: List<VoiceOption>)
-@Immutable data class OfflineVoiceModel(val id: String, val name: String, val gender: String, val sizeMb: Int, val installed: Boolean, val source: String = "network")
+@Immutable
+data class OfflineVoiceModel(
+    val id: String,
+    val name: String,
+    val gender: String,
+    val sizeMb: Int,
+    val installed: Boolean,
+    val source: String = "network",
+    val fromVBook: Boolean = false,
+)
 @Immutable data class Suggestion(val label: String, val url: String)
 
 enum class Tab { HOME, LIBRARY, SEARCH, SETTINGS }
