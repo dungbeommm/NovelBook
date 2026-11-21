@@ -5,6 +5,7 @@ import vn.tramtruyen.reader.engine.network.AppDns
 import android.app.Application
 import android.app.ActivityManager
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import android.webkit.CookieManager
 import com.google.android.play.core.splitcompat.SplitCompat
@@ -44,7 +45,17 @@ class TramTruyenApplication : Application(), ImageLoaderFactory {
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        SplitCompat.install(this)
+        if (isReaderProcess()) SplitCompat.install(this)
+    }
+
+    private fun isReaderProcess(): Boolean {
+        val processName = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            File("/proc/self/cmdline").inputStream().bufferedReader().use { it.readText() }
+                .substringBefore('\u0000')
+        }
+        return processName == packageName
     }
 
     private val browserUserAgent =
@@ -53,6 +64,8 @@ class TramTruyenApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        // Gecko's sandboxed services use the same Application but cannot read reader data.
+        if (!isReaderProcess()) return
         appContext = applicationContext
         AppDns.init(applicationContext)
         AdBlockManager.init(applicationContext)
