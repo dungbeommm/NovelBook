@@ -90,7 +90,7 @@ object GeckoModuleInstaller {
         val version = context.packageManager.getPackageInfo(context.packageName, 0).versionName
         check(!version.isNullOrBlank()) { "Không xác định được phiên bản NovelBook đang cài." }
         return GECKO_BUCKET.toHttpUrl().newBuilder()
-            .addPathSegment("v$version")
+            .addPathSegment("v${version.replace(' ', '-')}")
             .addPathSegment("TramTruyen-Gecko.apk")
             .build()
             .toString()
