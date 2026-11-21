@@ -42,10 +42,6 @@ android {
         targetSdk = 36
         versionCode = 138
         versionName = "1.015"
-        resValue "string", "gecko_module_download_url",
-            providers.gradleProperty("geckoModuleUrl").getOrElse(
-                "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/gecko/GeckoBrowser.apks.zip"
-            )
         resValue "string", "web_parser_bundle_download_url",
             providers.gradleProperty("webParserBundleUrl").getOrElse(
                 "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/parsers/WebParser.json"
