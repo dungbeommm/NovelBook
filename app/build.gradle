@@ -40,8 +40,8 @@ android {
         applicationId = "com.novel.reader.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 145
-        versionName = "0.07"
+        versionCode = 146
+        versionName = "0.08"
         resValue "string", "web_parser_bundle_download_url",
             providers.gradleProperty("webParserBundleUrl").getOrElse(
                 "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/parsers/WebParser.json"
