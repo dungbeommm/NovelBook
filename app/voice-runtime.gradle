@@ -1,0 +1,95 @@
+import java.security.MessageDigest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
+// The runtime is an input to the APK build, with the digest from the VBook release.
+def runtimeUrl = "https://github.com/Darkrai9x/vbook-settings/releases/download/android/vBook_1.2.7-arm64-v8a.apk"
+def runtimeSha256 = "c9117dfe9b95e7575dc6f991e85b50d48f98356a22521d2d9e4bd8d98e26c3d3"
+def runtimeAsset = "voice-runtime/vbook-1.2.7-c9117dfe"
+def dexEntries = ["classes.dex", "classes2.dex", "classes3.dex", "classes4.dex"]
+def voiceLibraries = [
+    "libncnn.so", "libpipertts.so", "libMNN.so", "libfasttts.so",
+    "libaudiocpp.so", "libvieneutts.so", "libvieneunano.so",
+    "libsupertonic.so", "libkorva.so",
+]
+def generated = layout.buildDirectory.dir("generated/voiceRuntime")
+def sourceApk = layout.buildDirectory.file("downloads/vbook-1.2.7-arm64-v8a.apk")
+
+def sha256 = { File file ->
+    def digest = MessageDigest.getInstance("SHA-256")
+    file.withInputStream { input ->
+        byte[] buffer = new byte[65536]
+        for (int count; (count = input.read(buffer)) != -1;) digest.update(buffer, 0, count)
+    }
+    digest.digest().encodeHex().toString()
+}
+
+def prepareVoiceRuntime = tasks.register("prepareVoiceRuntime") {
+    inputs.property("runtimeUrl", runtimeUrl)
+    inputs.property("runtimeSha256", runtimeSha256)
+    inputs.property("runtimeAsset", runtimeAsset)
+    inputs.property("dexEntries", dexEntries)
+    inputs.property("voiceLibraries", voiceLibraries)
+    outputs.dir(generated)
+
+    doLast {
+        File apk = sourceApk.get().asFile
+        if (!apk.isFile() || sha256(apk) != runtimeSha256) {
+            apk.parentFile.mkdirs()
+            File download = new File(apk.parentFile, apk.name + ".part")
+            try {
+                URLConnection connection = URI.create(runtimeUrl).toURL().openConnection()
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000
+                connection.inputStream.withCloseable { input ->
+                    download.withOutputStream { output -> input.transferTo(output) }
+                }
+                if (sha256(download) != runtimeSha256) {
+                    throw new GradleException("Checksum mismatch for the VBook 1.2.7 runtime")
+                }
+                java.nio.file.Files.move(download.toPath(), apk.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } finally {
+                download.delete()
+            }
+        }
+
+        File root = generated.get().asFile
+        File assets = new File(root, "assets/${runtimeAsset}")
+        File libraries = new File(root, "jniLibs/arm64-v8a")
+        assets.mkdirs()
+        libraries.mkdirs()
+        new ZipFile(apk).withCloseable { zip ->
+            def requireEntry = { String name ->
+                def entry = zip.getEntry(name)
+                if (entry == null || entry.size <= 0) {
+                    throw new GradleException("VBook runtime is missing " + name)
+                }
+                entry
+            }
+            dexEntries.eachWithIndex { name, index ->
+                new File(assets, "engine-${index + 1}.jar").withOutputStream { file ->
+                    new ZipOutputStream(file).withCloseable { jar ->
+                        def dex = new ZipEntry("classes.dex")
+                        dex.time = 0L
+                        jar.putNextEntry(dex)
+                        zip.getInputStream(requireEntry(name)).withCloseable { input -> input.transferTo(jar) }
+                        jar.closeEntry()
+                    }
+                }
+            }
+            voiceLibraries.each { name ->
+                new File(libraries, name).withOutputStream { output ->
+                    zip.getInputStream(requireEntry("lib/arm64-v8a/" + name)).withCloseable { input ->
+                        input.transferTo(output)
+                    }
+                }
+            }
+        }
+    }
+}
+
+android.sourceSets.main.assets.srcDir(generated.get().dir("assets").asFile)
+android.sourceSets.main.jniLibs.srcDir(generated.get().dir("jniLibs").asFile)
+tasks.named("preBuild").configure { dependsOn(prepareVoiceRuntime) }

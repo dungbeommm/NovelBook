@@ -57,13 +57,6 @@ fun VoiceManagerCard(vm: PlayerViewModel, ui: UiState) {
         VBookTtsRuntime.loadCatalog(context)
         vm.refreshVoiceCatalog()
     }
-    val runtimePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) scope.launch {
-            runCatching { VBookTtsRuntime.importRuntime(context, uri) }
-            vm.refreshVoiceCatalog()
-        }
-    }
-
     val allVoices = ui.voiceGroups.flatMap { group -> group.voices }
     val languageOptions = allVoices.map { it.language.ifBlank { "Khác" } }.distinct().sorted()
     val providerOptions = ui.voiceGroups.map { it.name }.distinct().sorted()
@@ -146,19 +139,8 @@ fun VoiceManagerCard(vm: PlayerViewModel, ui: UiState) {
                 color = cs.surfaceVariant.copy(alpha = 0.42f),
             ) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Runtime VBook", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (vbookState.runtimeReady) "Đã nạp engine từ tệp .apks"
-                                else "Nhập tệp vBook_1.2.7.apks để bật các model AI",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = cs.onSurfaceVariant,
-                            )
-                        }
-                        TextButton(onClick = { runtimePicker.launch(arrayOf("*/*")) }) {
-                            Text(if (vbookState.runtimeReady) "Đổi runtime" else "Chọn .apks")
-                        }
+                    if (!vbookState.runtimeReady) {
+                        Text("Bản cài này thiếu thư viện giọng đọc ARM64", style = MaterialTheme.typography.bodySmall, color = cs.error)
                     }
                     if (vbookState.message != null) {
                         Text(vbookState.message.orEmpty(), style = MaterialTheme.typography.bodySmall, color = cs.primary)

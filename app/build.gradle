@@ -100,7 +100,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     packaging {
-        // Nap thu vien native thang tu APK, khong giai nen ra data -> mo app nhanh hon.
+        // Load native libraries directly from the APK.
         jniLibs { useLegacyPackaging = false }
         resources {
             excludes += [
@@ -198,3 +198,5 @@ tasks.register("standaloneJavaTests") {
     dependsOn standaloneRunTasks
 }
 tasks.named("check").configure { dependsOn "standaloneJavaTests" }
+
+apply from: "voice-runtime.gradle"

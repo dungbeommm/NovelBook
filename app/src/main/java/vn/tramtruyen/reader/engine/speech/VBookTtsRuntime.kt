@@ -1,7 +1,7 @@
 package vn.tramtruyen.reader.engine.speech
 
 import android.content.Context
-import android.net.Uri
+import android.os.Build
 import dalvik.system.DexClassLoader
 import com.android.dx.Code
 import com.android.dx.DexMaker
@@ -31,17 +31,14 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.WeakHashMap
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -74,11 +71,12 @@ data class VBookTtsUiState(
     val message: String? = null,
 )
 
-/** Downloads VBook's public model catalog and runs its engines from a user-imported .apks runtime. */
+/** Downloads VBook's public model catalog and runs the speech engines packaged with NovelBook. */
 object VBookTtsRuntime {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/models.json"
     private const val COMMON_DATA_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/data.zip"
     private const val DATA_VERSION = 3
+    private const val RUNTIME_ASSET = "voice-runtime/vbook-1.2.7-c9117dfe"
     private const val MODEL_CATALOG_ASSET = "reader_catalog/vbook-models.json"
     private val engines = listOf(
         Piper.ENGINE, ViFast.ENGINE, VieNeu.ENGINE, VieNeuNano.ENGINE, Supertonic.ENGINE, Korva.ENGINE,
@@ -91,10 +89,20 @@ object VBookTtsRuntime {
     private val bridgeClasses = WeakHashMap<ClassLoader, Class<*>>()
     @Volatile private var appContext: Context? = null
     @Volatile private var runtimeHandle: RuntimeHandle? = null
+    private val bundledLibraries by lazy {
+        val info = appContext?.applicationInfo ?: return@lazy emptySet()
+        listOfNotNull(info.sourceDir, *info.splitSourceDirs.orEmpty()).flatMap { apk ->
+            runCatching {
+                ZipFile(apk).use { zip ->
+                    requiredNativeLibraries.filter { zip.getEntry("lib/arm64-v8a/$it") != null }
+                }
+            }.getOrDefault(emptyList())
+        }.toSet()
+    }
     private var activeEngine: LoadedEngine? = null
     private val installedIds = LinkedHashSet<String>()
 
-    private data class RuntimeHandle(val loader: DexClassLoader, val nativeDirectory: File)
+    private data class RuntimeHandle(val loader: DexClassLoader)
     private data class LoadedEngine(
         val modelId: String,
         val runtime: RuntimeHandle,
@@ -109,8 +117,6 @@ object VBookTtsRuntime {
             runCatching { context.assets.open(MODEL_CATALOG_ASSET).bufferedReader().use { it.readText() } }
                 .getOrNull()?.let { publishCatalog(parseCatalog(it), loading = true) }
         }
-        val ready = runtimeDirectory(context).resolve("ready.txt").isFile
-        mutableState.value = mutableState.value.copy(runtimeReady = ready)
         refreshInstalledRows()
     }
 
@@ -135,65 +141,6 @@ object VBookTtsRuntime {
             publishCatalog(published.associateBy { it.id }.values.toList(), loading = false)
         }
         else mutableState.value = mutableState.value.copy(loadingCatalog = false)
-    }
-
-    suspend fun importRuntime(context: Context, uri: Uri) = withContext(Dispatchers.IO) {
-        initialize(context)
-        mutableState.value = mutableState.value.copy(message = "Đang nhập runtime VBook…")
-        val stage = File(context.cacheDir, "vbook-runtime-stage-${System.nanoTime()}")
-        stage.mkdirs()
-        try {
-            val archive = File(stage, "source.apks")
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                FileOutputStream(archive).use { output -> input.copyTo(output) }
-            } ?: error("Không đọc được tệp .apks")
-            val nextRuntime = File(stage, "runtime").apply { mkdirs() }
-            val baseApk = File(nextRuntime, "base.apk")
-            val libDirectory = File(nextRuntime, "lib").apply { mkdirs() }
-            var baseFound = false
-            var arm64SplitFound = false
-            ZipFile(archive).use { apks ->
-                val base = apks.getEntry("base.apk") ?: error("Gói này không có base.apk")
-                apks.getInputStream(base).use { input -> FileOutputStream(baseApk).use { output -> input.copyTo(output) } }
-                baseFound = true
-                val split = apks.getEntry("split_config.arm64_v8a.apk") ?: error("Không tìm thấy runtime arm64-v8a")
-                ZipInputStream(apks.getInputStream(split)).use { input ->
-                    while (true) {
-                        val entry = input.nextEntry ?: break
-                        val name = entry.name.substringAfterLast('/')
-                        if (!entry.isDirectory && name in requiredNativeLibraries) {
-                            FileOutputStream(File(libDirectory, name)).use { output -> input.copyTo(output) }
-                        }
-                    }
-                }
-                arm64SplitFound = true
-            }
-            if (!baseFound || !arm64SplitFound) error("Tệp runtime VBook không đầy đủ")
-            val packageName = context.packageManager.getPackageArchiveInfo(baseApk.absolutePath, 0)?.packageName
-            if (packageName != "com.vbook.android") error("Tệp được chọn không phải VBook 1.2.7")
-            val missing = requiredNativeLibraries.filterNot { File(libDirectory, it).isFile }
-            if (missing.isNotEmpty()) error("Thiếu thư viện VBook: ${missing.joinToString()}")
-            extractDexArchives(baseApk, File(nextRuntime, "dex"))
-            baseApk.delete()
-            File(nextRuntime, "ready.txt").writeText("VBook runtime imported\n")
-            val destination = runtimeDirectory(context)
-            engineLock.lock()
-            try {
-                activeEngine?.let(::releaseEngine)
-                activeEngine = null
-            } finally {
-                engineLock.unlock()
-            }
-            destination.deleteRecursively()
-            if (!nextRuntime.renameTo(destination)) error("Không lưu được runtime VBook")
-            runtimeHandle = null
-            mutableState.value = mutableState.value.copy(runtimeReady = true, message = "Runtime VBook đã sẵn sàng")
-        } catch (error: Throwable) {
-            mutableState.value = mutableState.value.copy(runtimeReady = false, message = error.message ?: "Không nhập được runtime VBook")
-            throw error
-        } finally {
-            stage.deleteRecursively()
-        }
     }
 
     suspend fun installModel(id: String) = withContext(Dispatchers.IO) {
@@ -305,7 +252,7 @@ object VBookTtsRuntime {
 
     suspend fun synthesize(text: String, voiceId: String, speed: Double): ByteArray = withContext(Dispatchers.IO) {
         val context = appContext ?: error("TTS chưa khởi tạo")
-        if (!mutableState.value.runtimeReady) error("Chọn tệp VBook .apks trong Quản lý giọng đọc để nạp runtime")
+        if (!mutableState.value.runtimeReady) error("Bản cài này thiếu thư viện giọng đọc ARM64")
         val modelId = voiceId.substringBefore(':')
         val speaker = voiceId.substringAfter(':', "0").toIntOrNull() ?: 0
         val model = mutableState.value.models.firstOrNull { it.model.id == modelId && it.installed }?.model
@@ -334,8 +281,6 @@ object VBookTtsRuntime {
         activeEngine?.let(::releaseEngine)
         activeEngine = null
         val module = engines.getValue(model.modelType)
-        val missing = module.libraries().filterNot { File(runtime.nativeDirectory, it).isFile }
-        check(missing.isEmpty()) { "Nhập lại gói VBook 1.2.7 để bổ sung runtime ${module.name()}" }
         val modelDir = modelDirectory(context, model.id)
         check(module.hasModelFiles(modelDir)) { "Tải lại ${model.name}: thiếu file model ${module.format()}" }
         val config = JSONObject(File(modelDir, "config.json").readText())
@@ -351,20 +296,20 @@ object VBookTtsRuntime {
             else model.language.substringBefore('-').ifBlank { "vi" }
         val speakers = speakerNames(modelDir, model.speakerCount)
         val speakerMap = speakers.mapIndexed { index, name -> index to name }.toMap()
-        val genderEnum = runtime.loader.loadClass("hm")
+        val genderEnum = runtime.loader.loadClass("em")
         val gender = genderEnum.getMethod("valueOf", String::class.java).invoke(null, when (model.gender.lowercase(Locale.ROOT)) {
             "male" -> "MALE"
             "female" -> "FEMALE"
             else -> "MULTI"
         })
         val engineType = module.runtimeType(runtime.loader)
-        val metadata = runtime.loader.loadClass("nm")
+        val metadata = runtime.loader.loadClass("km")
             .getConstructor(String::class.java, String::class.java, String::class.java, Int::class.javaPrimitiveType,
                 Int::class.javaPrimitiveType, Map::class.java, genderEnum, Long::class.javaPrimitiveType,
                 engineType.declaringJavaClass, String::class.java, List::class.java)
             .newInstance(model.id, model.name, model.language, sampleRateHint,
                 model.speakerCount, speakerMap, gender, model.sizeBytes, engineType, model.format, languages)
-        val pathFactory = runtime.loader.loadClass("bpa").getMethod("g", String::class.java, Boolean::class.javaPrimitiveType)
+        val pathFactory = runtime.loader.loadClass("dv0").getMethod("h", String::class.java, Boolean::class.javaPrimitiveType)
         val path = pathFactory.invoke(null, modelDir.absolutePath, false)
         val instance = module.createEngine(runtime.loader, engineType)
             ?: error("VBook không tạo được engine ${module.name()}")
@@ -394,7 +339,7 @@ object VBookTtsRuntime {
         args: Array<Any?>,
     ): Any? = suspendCancellableCoroutine { completion ->
         try {
-            val emptyContextClass = runtime.loader.loadClass("y36")
+            val emptyContextClass = runtime.loader.loadClass("g36")
             val coroutineContext = emptyContextClass.getField("a").get(null)
             val continuation = Proxy.newProxyInstance(runtime.loader, arrayOf(continuationClass)) { _, called, values ->
                 when (called.name) {
@@ -416,7 +361,7 @@ object VBookTtsRuntime {
             val callArgs = args.copyOf()
             callArgs[callArgs.lastIndex] = bridge
             val immediate = method.invoke(target, *callArgs)
-            val suspended = runtime.loader.loadClass("vz3").getField("a").get(null)
+            val suspended = runtime.loader.loadClass("oz3").getField("a").get(null)
             if (immediate !== suspended) completion.resume(immediate)
         } catch (error: Throwable) {
             val actual = if (error is InvocationTargetException) error.targetException else error
@@ -432,7 +377,7 @@ object VBookTtsRuntime {
             val className = "vn.tramtruyen.reader.engine.speech.generated.VBookContinuation$id"
             val descriptor = "L${className.replace('.', '/')};"
             val bridgeType = TypeId.get<Any>(descriptor)
-            val superType = TypeId.get<Any>("Lkv3;")
+            val superType = TypeId.get<Any>("Lev3;")
             val callbackType = TypeId.get<Any>("Lkotlin/coroutines/Continuation;")
             val objectType = TypeId.OBJECT
             val maker = DexMaker()
@@ -454,61 +399,57 @@ object VBookTtsRuntime {
 
     private fun getRuntime(context: Context): RuntimeHandle {
         runtimeHandle?.let { return it }
-        val directory = runtimeDirectory(context)
-        if (!File(directory, "ready.txt").isFile) error("Nạp runtime VBook .apks trước khi dùng giọng AI")
-        val dexDirectory = File(directory, "dex")
-        var dexArchives = dexDirectory.listFiles()?.filter { it.extension == "jar" }.orEmpty()
-        if (dexArchives.isEmpty()) {
-            val apk = File(directory, "base.apk")
-            if (!apk.isFile) error("Không tìm thấy DEX trong runtime VBook")
-            dexArchives = extractDexArchives(apk, dexDirectory)
-            apk.delete()
+        val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET).apply { mkdirs() }
+        val dexArchives = (1..4).map { index ->
+            val name = "engine-$index.jar"
+            val destination = File(runtimeCache, name)
+            if (!destination.isFile) {
+                val temporary = File.createTempFile("engine-", ".jar", runtimeCache)
+                try {
+                    FileOutputStream(temporary).use { output ->
+                        check(temporary.setReadOnly()) { "Không thể khóa mã giọng đọc" }
+                        context.assets.open("$RUNTIME_ASSET/$name").use { input -> input.copyTo(output) }
+                    }
+                    check(temporary.renameTo(destination)) { "Không thể chuẩn bị mã giọng đọc" }
+                } finally {
+                    temporary.delete()
+                }
+            }
+            destination
         }
-        if (dexArchives.isEmpty()) error("Runtime VBook không có DEX")
-        val libraryDirectory = File(directory, "lib")
-        val loader = VBookDexClassLoader(dexArchives.joinToString(File.pathSeparator) { it.absolutePath }, File(context.codeCacheDir, "vbook-dex").apply { mkdirs() }.absolutePath,
-            libraryDirectory.absolutePath, context.classLoader)
-        val appClass = loader.loadClass("ca4")
-        val appContextField = appClass.getDeclaredField("r").apply { isAccessible = true }
+        val info = context.applicationInfo
+        val libraryPaths = listOfNotNull(info.sourceDir, *info.splitSourceDirs.orEmpty())
+            .map { "$it!/lib/arm64-v8a" }
+        val loader = VBookDexClassLoader(
+            dexArchives.joinToString(File.pathSeparator) { it.absolutePath },
+            runtimeCache.absolutePath,
+            (listOf(info.nativeLibraryDir) + libraryPaths).joinToString(File.pathSeparator),
+            context.classLoader,
+        )
+        val appClass = loader.loadClass("q21")
+        val appContextField = appClass.getDeclaredField("m").apply { isAccessible = true }
         appContextField.set(null, context.applicationContext)
-        return RuntimeHandle(loader, libraryDirectory).also { runtimeHandle = it }
+        return RuntimeHandle(loader).also { runtimeHandle = it }
     }
 
     private class VBookDexClassLoader(dexPath: String, optimizedDirectory: String, librarySearchPath: String, parent: ClassLoader) :
         DexClassLoader(dexPath, optimizedDirectory, librarySearchPath, parent) {
         override fun loadClass(name: String, resolve: Boolean): Class<*> {
-            if (name == "kotlin.coroutines.Continuation") {
+            if ('.' !in name || name == "kotlin.coroutines.Continuation") {
                 synchronized(this) {
                     findLoadedClass(name)?.let { return it }
-                    runCatching { findClass(name) }.getOrNull()?.let { loaded ->
+                    val embeddedClass = try {
+                        findClass(name)
+                    } catch (_: ClassNotFoundException) {
+                        null
+                    }
+                    embeddedClass?.let { loaded ->
                         if (resolve) resolveClass(loaded)
                         return loaded
                     }
                 }
             }
             return super.loadClass(name, resolve)
-        }
-    }
-
-    private fun extractDexArchives(apk: File, destination: File): List<File> {
-        destination.mkdirs()
-        val dexEntries = ZipFile(apk).use { zip ->
-            zip.entries().asSequence()
-                .filter { !it.isDirectory && it.name.matches(Regex("classes(\\d*)\\.dex")) }
-                .sortedBy { entry -> entry.name.removePrefix("classes").removeSuffix(".dex").toIntOrNull() ?: 1 }
-                .map { entry -> entry.name to zip.getInputStream(entry).use { it.readBytes() } }
-                .toList()
-        }
-        if (dexEntries.size < 3) error("VBook runtime thiếu các DEX của engine")
-        return dexEntries.mapIndexed { index, (entryName, bytes) ->
-            val jar = File(destination, "vbook-${index + 1}.jar")
-            ZipOutputStream(FileOutputStream(jar)).use { output ->
-                output.putNextEntry(ZipEntry("classes.dex"))
-                output.write(bytes)
-                output.closeEntry()
-            }
-            if (!jar.setReadable(true, false) || !jar.setWritable(false, false)) error("Không thể khóa DEX VBook")
-            jar
         }
     }
 
@@ -551,7 +492,8 @@ object VBookTtsRuntime {
         installedIds.clear()
         root.listFiles()?.filter { it.isDirectory && File(it, "config.json").isFile }?.forEach { installedIds.add(it.name) }
         mutableState.value = mutableState.value.copy(
-            runtimeReady = File(runtimeDirectory(context), "ready.txt").isFile,
+            runtimeReady = "arm64-v8a" in Build.SUPPORTED_ABIS &&
+                bundledLibraries.containsAll(requiredNativeLibraries),
             models = mutableState.value.models.map { row ->
                 val installed = row.model.id in installedIds
                 row.copy(
@@ -665,7 +607,6 @@ object VBookTtsRuntime {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun runtimeDirectory(context: Context) = File(context.filesDir, "vbook-runtime")
     private fun modelDirectory(context: Context, id: String) = File(File(context.filesDir, "tts/models"), id)
 
     internal fun engineLabel(engine: String): String = engines[engine]?.name() ?: engine
@@ -684,7 +625,7 @@ object VBookTtsRuntime {
     }
 
     private fun unwrapFailure(result: Any?): Throwable? {
-        if (result == null || result.javaClass.name != "aue") return null
+        if (result == null || result.javaClass.name != "wre") return null
         val field = runCatching { result.javaClass.getDeclaredField("a").apply { isAccessible = true } }.getOrNull() ?: return null
         return field.get(result) as? Throwable
     }

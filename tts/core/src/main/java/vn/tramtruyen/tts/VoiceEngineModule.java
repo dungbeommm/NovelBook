@@ -16,7 +16,7 @@ public record VoiceEngineModule(
     }
 
     public Enum<?> runtimeType(ClassLoader loader) throws ClassNotFoundException {
-        Class<?> type = loader.loadClass("fp");
+        Class<?> type = loader.loadClass("ap");
         String enumName = id.toUpperCase(Locale.ROOT);
         for (Object constant : type.getEnumConstants()) {
             Enum<?> value = (Enum<?>) constant;
@@ -26,7 +26,7 @@ public record VoiceEngineModule(
     }
 
     public Object createEngine(ClassLoader loader, Enum<?> type) throws ReflectiveOperationException {
-        return loader.loadClass("xtf").getMethod("g", type.getDeclaringClass()).invoke(null, type);
+        return loader.loadClass("use").getMethod("h", type.getDeclaringClass()).invoke(null, type);
     }
 
     public boolean accepts(String declaredFormat) {
