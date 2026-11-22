@@ -724,9 +724,9 @@ private fun PlayerSheet(vm: PlayerViewModel, ui: UiState) {
             }
             "voice" -> {
                 Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp).verticalScroll(rememberScrollState())) {
-                    SheetTitle("Giọng đọc AI")
+                    SheetTitle("Giọng đọc")
                     if (ui.voiceGroups.isEmpty()) {
-                        Text("Chưa có giọng được cài. Vào Cài đặt → Âm thanh & giọng đọc, cài trình chạy TTS rồi tải một giọng low.",
+                        Text("Không tìm thấy giọng đang bật. Vào Cài đặt → Quản lý giọng đọc để bật hoặc cấu hình provider.",
                             style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
                     }
                     ui.voiceGroups.forEach { g ->

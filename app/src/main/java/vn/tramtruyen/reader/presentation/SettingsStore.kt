@@ -79,7 +79,7 @@ class SettingsStore(private val context: Context) {
             colorMode = colorMode,
             monetSeed = (p[Keys.seed] ?: DEFAULT_SEED).takeIf { it in MONET } ?: DEFAULT_SEED,
             accentColor = p[Keys.accent] ?: DEFAULT_ACCENT,
-            selectedVoice = vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy.migrate(p[Keys.voice]),
+            selectedVoice = vn.tramtruyen.reader.engine.speech.TtsVoicePolicy.migrate(p[Keys.voice]),
             autoNextChapter = p[Keys.autoNext] ?: true,
             karaokeFontSize = p[Keys.karaokeFont] ?: 24,
             playerVolume = (p[Keys.playerVolume] ?: 1f).coerceIn(0f, 1f),
@@ -92,7 +92,8 @@ class SettingsStore(private val context: Context) {
             voiceProfileEnabled = p[Keys.voiceProfile] ?: true,
             contentLanguage = p[Keys.contentLanguage] ?: "AUTO",
             contentExtractionMode = p[Keys.contentExtractionMode] ?: "SMART",
-            disabledTtsSources = p[Keys.disabledSources] ?: emptySet(),
+            disabledTtsSources = (p[Keys.disabledSources] ?: emptySet())
+                .filterNot { it.equals("offline", ignoreCase = true) }.toSet(),
         )
     }
 

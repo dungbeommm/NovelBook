@@ -22,14 +22,14 @@ object TtsManager {
     private lateinit var capcut: CapcutTtsProvider
     private lateinit var gtts: GttsProvider
     private lateinit var tiktok: TikTokTtsProvider
-    private lateinit var offline: SherpaOfflineTtsProvider
+    private lateinit var vbook: VBookTtsProvider
     private val cloud = LinkedHashMap<String, TtsProvider>()
     /** Nguon giong bi tat trong Cai dat (key provider, chu thuong). */
     @Volatile var disabledProviders: Set<String> = emptySet()
         private set
 
     fun setDisabledProviders(keys: Set<String>) {
-        disabledProviders = keys.map { it.lowercase() }.toSet()
+        disabledProviders = keys.map { it.lowercase() }.filterNot { it == "offline" }.toSet()
     }
 
     fun isProviderDisabled(providerKey: String): Boolean =
@@ -54,8 +54,8 @@ object TtsManager {
             capcut = CapcutTtsProvider(context.applicationContext)
             gtts = GttsProvider()
             tiktok = TikTokTtsProvider()
-            OfflineTtsModelManager.init(context)
-            offline = SherpaOfflineTtsProvider()
+            vbook = VBookTtsProvider()
+            VBookTtsRuntime.initialize(context.applicationContext)
             reloadCloudProviders()
             initialized = true
         }
@@ -102,7 +102,7 @@ object TtsManager {
             "capcut" -> capcut to voiceId
             "gtts" -> gtts to voiceId
             "tiktok" -> tiktok to voiceId
-            "offline" -> offline to voiceId
+            "vbook" -> vbook to voiceId
             // Cloud providers nhan FULL key (gemini:Kore / zalo:1) de map dung bang giong.
             in cloud.keys -> cloud[provider] to key
             else -> null to voiceId
@@ -116,7 +116,7 @@ object TtsManager {
             noteError("TTS chưa khởi tạo được — hãy thử lại sau")
             return null
         }
-        val key = OfflineVoicePolicy.migrate(voiceKey)
+        val key = TtsVoicePolicy.migrate(voiceKey)
         val requestedProvider = key.substringBefore(':').lowercase()
         if (isProviderDisabled(requestedProvider)) {
             noteError("Nguồn giọng ${requestedProvider} đang tắt trong Cài đặt → Âm thanh & giọng đọc")
@@ -135,7 +135,6 @@ object TtsManager {
             val audio = provider.synthesize(text, voiceId, speed, pitch)
             if (audio == null || audio.isEmpty()) {
                 val detail = when (provider) {
-                    is SherpaOfflineTtsProvider -> provider.lastError
                     is GeminiTtsProvider -> provider.lastError
                     is EdgeTtsProvider -> provider.lastError
                     is TikTokTtsProvider -> provider.lastError
@@ -172,7 +171,7 @@ object TtsManager {
         add(capcut.voiceList)
         add(gtts.voiceList)
         add(tiktok.voiceList)
-        add(offline.voiceList)
+        add(vbook.voiceList)
         for (p in cloud.values) add(p.voiceList)
         return out
     }
@@ -183,7 +182,7 @@ object TtsManager {
         "capcut_available" to true,
         "gtts_available" to true,
         "tiktok_available" to tiktok.isConfigured(),
-        "offline_available" to offline.isConfigured(),
+        "vbook_available" to vbook.isConfigured(),
         "cloud_providers" to cloud.keys.toList(),
         "total_voices" to getAllVoices().size,
         "default_voice" to DEFAULT_VOICE,
@@ -192,19 +191,14 @@ object TtsManager {
 
     fun providerInfo(): List<ProviderInfo> {
         val list = ArrayList<ProviderInfo>()
-        list.add(ProviderInfo("android", "Android TTS (ngoại tuyến)", true, true, android.voiceList.size))
+        list.add(ProviderInfo("android", "Android TTS", true, true, android.voiceList.size))
         list.add(ProviderInfo("edge", "Edge TTS", true, true, edge.voiceList.size))
         list.add(ProviderInfo("capcut", "CapCut TTS (vi-VN)", true, true, capcut.voiceList.size))
         list.add(ProviderInfo("gtts", "Google Translate TTS", true, true, gtts.voiceList.size))
         list.add(ProviderInfo("tiktok", "TikTok TTS (trực tuyến)", tiktok.isConfigured(), true, tiktok.voiceList.size))
-        list.add(ProviderInfo("offline", "AI ngoại tuyến", offline.isConfigured(), true, offline.voiceList.size))
+        list.add(ProviderInfo("vbook", "VBook AI (ngoại tuyến)", vbook.isConfigured(), true, vbook.voiceList.size))
         for ((key, p) in cloud) list.add(ProviderInfo(key, key, p.isConfigured(), false, p.voiceList.size))
         return list
-    }
-
-    suspend fun deleteOfflineModel(id: String): Boolean {
-        if (!initialized) return false
-        return offline.deleteModel(id)
     }
 
     data class ProviderInfo(val key: String, val name: String, val configured: Boolean, val free: Boolean, val voices: Int)

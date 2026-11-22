@@ -22,7 +22,6 @@ import vn.tramtruyen.reader.engine.sources.AdBlockManager
 import vn.tramtruyen.reader.engine.sources.BrowserHistoryManager
 import vn.tramtruyen.reader.engine.speech.TtsManager
 import vn.tramtruyen.reader.engine.catalog.ParserSourceBootstrap
-import vn.tramtruyen.reader.engine.catalog.DownloadOptions
 import java.io.File
 import android.util.Base64
 import android.security.keystore.KeyProperties
@@ -67,11 +66,26 @@ class TramTruyenApplication : Application(), ImageLoaderFactory {
         // Gecko's sandboxed services use the same Application but cannot read reader data.
         if (!isReaderProcess()) return
         appContext = applicationContext
+        removeLegacyOfflineVoiceModels()
         AppDns.init(applicationContext)
         AdBlockManager.init(applicationContext)
-        DownloadOptions.init(applicationContext)
         BrowserHistoryManager.init(applicationContext)
         thread(isDaemon = true, name = "reader-core-init") { initCore() }
+    }
+
+    /** Remove Piper/Sherpa files left in app-private storage by older releases. */
+    private fun removeLegacyOfflineVoiceModels() {
+        val migration = getSharedPreferences("voice_migrations", Context.MODE_PRIVATE)
+        if (migration.getBoolean("sherpa_models_removed_v1", false)) return
+        val modelDirectory = File(filesDir, "offline_tts")
+        val expectedParent = filesDir.canonicalFile
+        if (modelDirectory.canonicalFile.parentFile != expectedParent) {
+            Log.e(TAG, "Skipped legacy voice cleanup: unexpected model directory")
+            return
+        }
+        val removed = !modelDirectory.exists() || modelDirectory.deleteRecursively()
+        if (removed) migration.edit().putBoolean("sherpa_models_removed_v1", true).apply()
+        else Log.e(TAG, "Could not remove legacy offline voice models; will retry next launch")
     }
 
     override fun newImageLoader(): ImageLoader {

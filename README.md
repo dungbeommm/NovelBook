@@ -23,7 +23,7 @@
 | 📚 **Đọc truyện trực tuyến** | Duyệt các nguồn truyện, mở chương và lưu tiến độ đọc. |
 | 📖 **Đọc sách EPUB** | Nhập sách EPUB, xem mục lục và tiếp tục đọc chương đang dở. |
 | 🔊 **Nghe truyện** | Phát giọng đọc tổng hợp, nghe khi chuyển ứng dụng và điều khiển từ thông báo Android. |
-| 🗣️ **Giọng đọc ngoại tuyến** | Tải mô hình giọng đọc để nghe trên thiết bị. |
+| 🗣️ **Giọng đọc ngoại tuyến** | Tải model giọng VBook Piper, ViFast hoặc VieNeu để nghe trên thiết bị. Cần nhập runtime từ tệp `.apks` của VBook. |
 | 🎨 **Giao diện Android hiện đại** | Jetpack Compose Material 3, hỗ trợ giao diện sáng và tối. |
 | 🌐 **Nguồn web mở rộng** | Có thể cập nhật bộ phân tích trang và tải module Gecko cho những nguồn cần trình duyệt tương thích. |
 
@@ -55,7 +55,7 @@ Mã ứng dụng nằm trong `app/src/main/java/vn/tramtruyen/reader`. Ứng d�
 | `model` | Dữ liệu truyện, chương, tiến độ và định danh |
 | `engine/sources` | Cấu hình và trích xuất nội dung từ các nguồn web |
 | `engine/ebooks` | Nhập sách và đọc EPUB |
-| `engine/speech` | Giọng đọc trực tuyến, mô hình ngoại tuyến và phát âm thanh |
+| `engine/speech` | Giọng đọc trực tuyến, model VBook đã tải và phát âm thanh |
 | `engine/catalog` | Cài đặt và cập nhật bộ phân tích, module Gecko và extension |
 
 ## Module Gecko
@@ -68,7 +68,7 @@ Bản release tạo APK chính và APK Gecko riêng. Hai tệp cần cùng phiê
 
 - [Tài liệu bộ phân tích](app/src/main/assets/parser_v4/README_ENGINE_V4.md) ghi thông tin và tham chiếu của bộ phân tích.
 - `engine/sources/AufiRules.kt` ghi chú nguồn gốc của bộ quy tắc dự phòng Aufi.
-- `com.k2fsa.sherpa.onnx` là package cầu nối Kotlin với thư viện native sherpa-onnx.
+- Danh mục model VBook lấy từ [vbook-settings](https://github.com/Darkrai9x/vbook-settings); runtime engine được người dùng nhập từ tệp `.apks`.
 
 ---
 

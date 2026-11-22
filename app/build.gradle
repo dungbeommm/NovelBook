@@ -40,8 +40,8 @@ android {
         applicationId = "com.novel.reader.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 142
-        versionName = "0.03 beta"
+        versionCode = 143
+        versionName = "0.04"
         resValue "string", "web_parser_bundle_download_url",
             providers.gradleProperty("webParserBundleUrl").getOrElse(
                 "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/parsers/WebParser.json"
@@ -114,6 +114,7 @@ android {
 }
 
 dependencies {
+    implementation "com.linkedin.dexmaker:dexmaker:2.28.6"
     implementation "com.google.guava:guava:33.3.1-android"
     implementation "com.google.android.play:feature-delivery:2.1.0"
     // ---- Backend (Kotlin: scraper, HTTP, TTS cloud, WebView, MediaSession) ----
@@ -126,13 +127,6 @@ dependencies {
     implementation "org.jsoup:jsoup:1.23.1"
     implementation "com.squareup.okhttp3:okhttp:5.4.0"
     implementation "com.squareup.okhttp3:okhttp-dnsoverhttps:5.4.0"
-    // Neural TTS chạy hoàn toàn trên thiết bị (VITS/Piper + eSpeak-NG).
-    implementation("com.bihe0832.android:lib-sherpa-onnx:8.5.4") {
-        // This dependency ships framework stubs such as android.os.Process.
-        // R8 must resolve these calls against the Android SDK.
-        exclude group: "com.bihe0832.android", module: "lib-android"
-    }
-
     // ---- Giao dien Jetpack Compose (Material 3, thay hoan toan WebView) ----
     def composeBom = platform("androidx.compose:compose-bom:2026.05.01")
     implementation composeBom

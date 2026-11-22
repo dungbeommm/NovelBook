@@ -600,7 +600,6 @@ object ReadingEngine {
             put("gtts_available", true)
             put("capcut_available", true)
             put("tiktok_available", (st["tiktok_available"] as? Boolean) ?: false)
-            put("offline_available", (st["offline_available"] as? Boolean) ?: false)
             put("cloud_providers", JsonArray(TtsManager.cloudProviderKeys().map { JsonPrimitive(it) }))
             put("total_voices", (st["total_voices"] as? Int) ?: 0)
             put("default_voice", TtsManager.DEFAULT_VOICE)
@@ -643,8 +642,7 @@ object ReadingEngine {
         val requestedVoiceId = body["voice_id"]?.jsonPrimitive?.contentOrNull
             ?: body["voiceId"]?.jsonPrimitive?.contentOrNull
             ?: TtsManager.DEFAULT_VOICE
-        val voiceId = vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy.migrate(requestedVoiceId)
-        // Chuẩn hóa theo giọng offline trước khi tạo cache key.
+        val voiceId = vn.tramtruyen.reader.engine.speech.TtsVoicePolicy.migrate(requestedVoiceId)
         val text = if (doNormalize) {
             try { TextPipeline.normalizeForTts(rawText, voiceId) } catch (_: Exception) { rawText }
         } else rawText
@@ -652,11 +650,11 @@ object ReadingEngine {
         val pitch = (body["pitch"]?.jsonPrimitive?.doubleOrNull ?: 1.0).coerceIn(0.5, 2.0)
 
         val cacheKey = "$voiceId|${"%.2f".format(speed)}|${"%.2f".format(pitch)}|$text"
-        // Preserve the legacy CapCut cache/retry policy; local voices are cached as WAV.
+        // Preserve the provider-specific cache and retry policy.
         val cacheable = !voiceId.startsWith("capcut:", ignoreCase = true)
         var audio: ByteArray? = if (cacheable) ttsCacheGet(cacheKey) else null
         if (audio == null) {
-            val maxAttempts = if (voiceId.startsWith("capcut:") || voiceId.startsWith("offline:") || voiceId.startsWith("tiktok:")) 1 else 3
+            val maxAttempts = if (voiceId.startsWith("capcut:") || voiceId.startsWith("tiktok:")) 1 else 3
             for (attempt in 0 until maxAttempts) {
                 audio = try {
                     TtsManager.synthesize(text, voiceId, speed, pitch)
@@ -679,7 +677,7 @@ object ReadingEngine {
             val detail = TtsManager.lastError?.takeIf { it.isNotBlank() }
             throw ApiError(
                 500,
-                detail ?: "TTS thất bại. Kiểm tra mạng/API key với giọng trực tuyến, hoặc cài trình chạy/model với giọng ngoại tuyến."
+                detail ?: "TTS thất bại. Kiểm tra mạng hoặc API key của provider đang chọn."
             )
         }
         return audio

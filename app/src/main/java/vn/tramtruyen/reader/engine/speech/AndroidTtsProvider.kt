@@ -15,7 +15,7 @@ import java.io.File
 import java.util.Locale
 
 /**
- * TTS ngoai tuyen bang engine Android (TextToSpeech) — khong can mang, mac dinh.
+ * System TextToSpeech provider. Availability depends on the installed Android engine.
  * synthesizeToFile -> WAV bytes. voice_id dang "android:{voiceName}" hoac "android:default".
  */
 class AndroidTtsProvider(private val context: Context) : TtsProvider {
@@ -24,7 +24,7 @@ class AndroidTtsProvider(private val context: Context) : TtsProvider {
     private val ready = CompletableDeferred<Boolean>()
     private val synthesisMutex = Mutex()
     @Volatile private var voicesCache: List<JsonObject> = listOf(
-        TtsUtil.voice("android:default", "Android 1", "NEUTRAL", "Offline", "vi-VN", "Android TTS", "android", false)
+        TtsUtil.voice("android:default", "Android 1", "NEUTRAL", "Thiết bị", "vi-VN", "Android TTS", "android", false)
     )
 
     init {
@@ -53,7 +53,7 @@ class AndroidTtsProvider(private val context: Context) : TtsProvider {
                 else -> "Android"
             }
             out.add(TtsUtil.voice(
-                "android:default", "$engineName 1", "NEUTRAL", "Offline",
+                "android:default", "$engineName 1", "NEUTRAL", "Thiết bị",
                 "vi-VN", "Android TTS", "android", false,
             ))
             val voices: Set<Voice> = try { engine.voices ?: emptySet() } catch (_: Exception) { emptySet() }
@@ -65,7 +65,7 @@ class AndroidTtsProvider(private val context: Context) : TtsProvider {
                 val network = try { voice.isNetworkConnectionRequired } catch (_: Exception) { false }
                 out.add(TtsUtil.voice(
                     "android:${voice.name}", "$engineName ${index + 2}", "NEUTRAL",
-                    if (network) "Online" else "Offline", "vi-VN",
+                    if (network) "Online" else "Thiết bị", "vi-VN",
                     "Android TTS", "android", false,
                 ))
             }

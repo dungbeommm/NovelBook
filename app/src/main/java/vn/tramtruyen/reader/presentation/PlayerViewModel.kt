@@ -25,9 +25,8 @@ import vn.tramtruyen.reader.engine.sources.GenericExtractor
 import vn.tramtruyen.reader.engine.speech.CapcutTtsProtocol
 import vn.tramtruyen.reader.engine.speech.GeminiTtsProvider
 import vn.tramtruyen.reader.engine.speech.ZaloTtsProvider
-import vn.tramtruyen.reader.engine.speech.OfflineTtsModelManager
 import vn.tramtruyen.reader.engine.speech.TtsManager
-import vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy
+import vn.tramtruyen.reader.engine.speech.TtsVoicePolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -301,9 +300,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 zaloKeyOk = savedZalo.isNotBlank(),
             )
         }
-        refreshOfflineRuntime()
         loadVoices()
-        refreshOfflineModels()
         refreshCollections()
         restoreLastSession()
     }
@@ -320,7 +317,16 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 val name = v.optString("name", id)
                 val sub = listOf(genderLabel(v.optString("gender", "")), v.optString("tier", ""))
                     .filter { it.isNotBlank() }.joinToString(" · ")
-                groups.getOrPut(provider) { mutableListOf() }.add(VoiceOption(id, name, sub))
+                groups.getOrPut(provider) { mutableListOf() }.add(
+                    VoiceOption(
+                        id = id,
+                        label = name,
+                        sub = sub,
+                        provider = provider,
+                        language = v.optString("language"),
+                        gender = v.optString("gender"),
+                    ),
+                )
             }
             val ordered = groups.entries
                 .sortedBy {
@@ -337,104 +343,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         refreshTtsSources()
     }
 
+    fun refreshVoiceCatalog() = loadVoices()
+
     private fun genderLabel(g: String): String = when (g.uppercase()) {
         "MALE" -> "Nam"; "FEMALE" -> "Nữ"; "NEUTRAL" -> "Trung tính"; else -> ""
-    }
-
-
-    private fun refreshOfflineRuntime(message: String? = null) {
-        val ready = OfflineTtsModelManager.runtimeReady()
-        _ui.update { it.copy(offlineRuntimeReady = ready,
-            offlineRuntimeStatus = message ?: it.offlineRuntimeStatus) }
-    }
-
-    fun installOfflineRuntime() {
-        if (s.offlineRuntimeInstalling || s.offlineRuntimeReady) return
-        _ui.update { it.copy(offlineRuntimeInstalling = true, offlineRuntimeProgress = 0,
-            offlineRuntimeStatus = "Đang tải tài nguyên trình chạy TTS…") }
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                OfflineTtsModelManager.prepareSharedData { progress ->
-                    _ui.update { it.copy(offlineRuntimeProgress = progress,
-                        offlineRuntimeStatus = if (progress < 88) "Đang tải tài nguyên · $progress%" else "Đang cài dữ liệu phát âm…") }
-                }
-                refreshOfflineRuntime("Trình chạy TTS đã sẵn sàng")
-            } catch (e: Exception) {
-                _ui.update { it.copy(offlineRuntimeStatus = "Không cài được trình chạy: ${e.message}") }
-            } finally {
-                _ui.update { it.copy(offlineRuntimeInstalling = false) }
-            }
-        }
-    }
-
-    fun importOfflineVoice(uri: Uri) {
-        if (s.offlineTtsBusyId != null || !s.offlineRuntimeReady) return
-        _ui.update { it.copy(offlineTtsBusyId = "__import__", offlineTtsStatus = "Đang kiểm tra ZIP model…") }
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = OfflineTtsModelManager.importFromUri(getApplication<Application>(), uri)
-            refreshOfflineModels(); loadVoices()
-            _ui.update { it.copy(offlineTtsBusyId = null,
-                offlineTtsStatus = result.fold({ "Đã nhập giọng ${it.name}" }, { "Không nhập được: ${it.message}" })) }
-        }
-    }
-
-    private fun refreshOfflineModels() {
-        val list = runCatching {
-            OfflineTtsModelManager.models().map { m ->
-                OfflineVoiceModel(
-                    id = m.id, name = m.name,
-                    gender = genderLabel(m.gender),
-                    sizeMb = (m.sizeBytes / 1024 / 1024).toInt(),
-                    installed = OfflineTtsModelManager.isInstalled(m.id),
-                    source = m.source,
-                    fromVBook = m.fromVBook,
-                )
-            }
-        }.getOrDefault(emptyList())
-        _ui.update { it.copy(offlineVoiceModels = list) }
-    }
-
-    fun installOfflineVoice(id: String) {
-        if (s.offlineTtsBusyId != null) return
-        _ui.update { it.copy(offlineTtsBusyId = id, offlineTtsProgress = 0,
-            offlineTtsStatus = "Đang chuẩn bị dữ liệu phát âm…") }
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = OfflineTtsModelManager.install(id) { progress ->
-                _ui.update { state -> state.copy(
-                    offlineTtsProgress = progress,
-                    offlineTtsStatus = if (progress < 92) "Đang tải $progress%" else "Đang kiểm tra và giải nén…",
-                ) }
-            }
-            refreshOfflineModels()
-            loadVoices()
-            if (result.isSuccess) withContext(Dispatchers.Main) { setVoice("offline:$id") }
-            _ui.update { it.copy(
-                offlineTtsBusyId = null,
-                offlineTtsProgress = if (result.isSuccess) 100 else 0,
-                offlineTtsStatus = if (result.isSuccess) "Đã cài giọng ngoại tuyến" else
-                    "Không cài được: ${result.exceptionOrNull()?.message ?: "lỗi không xác định"}",
-            ) }
-        }
-    }
-
-    fun deleteOfflineVoice(id: String) {
-        if (s.offlineTtsBusyId != null) return
-        viewModelScope.launch(Dispatchers.IO) {
-            withContext(Dispatchers.Main) {
-                // Stop current/prefetched playback before removing its model.
-                if (s.selectedVoice == "offline:$id") stopPlayback()
-            }
-            val deleted = TtsManager.deleteOfflineModel(id)
-            if (!deleted) {
-                _ui.update { it.copy(offlineTtsStatus = "Không xóa được model") }
-                return@launch
-            }
-            val wasSelected = s.selectedVoice == "offline:$id"
-            if (wasSelected) _ui.update { it.copy(selectedVoice = TtsManager.DEFAULT_VOICE) }
-            refreshOfflineModels(); loadVoices()
-            if (wasSelected) persist()
-            _ui.update { it.copy(offlineTtsStatus = "Đã xóa model") }
-        }
     }
 
     private fun refreshCollections() {
@@ -798,7 +710,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
                 val profile = if (s.voiceProfileEnabled) smartStore.profile(story.id) else null
                 val profileVoice = profile?.first?.let { stored ->
-                    OfflineVoicePolicy.migrate(stored)
+                    TtsVoicePolicy.migrate(stored)
                 }
                 val effectiveVoice = profileVoice ?: s.selectedVoice
                 val effectiveSpeed = profile?.second?.coerceIn(0.5f,3f) ?: s.speed
@@ -2163,7 +2075,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setVoice(rawId: String) {
-        val id = OfflineVoicePolicy.migrate(rawId)
+        val id = TtsVoicePolicy.migrate(rawId)
         if (id == s.selectedVoice) {
             _ui.update { it.copy(sheet = null) }
             return
@@ -2356,7 +2268,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 null
             }
             if (bytes == null || bytes.isEmpty()) {
-                _ui.update { it.copy(offlineTtsStatus = TtsManager.lastError ?: "Không tạo được audio nghe thử") }
+                _ui.update { it.copy(voiceActionStatus = TtsManager.lastError ?: "Không tạo được audio nghe thử") }
                 return@launch
             }
             withContext(Dispatchers.Main) {
@@ -2379,7 +2291,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 }.onFailure {
                     voicePreviewPlayer?.release()
                     voicePreviewPlayer = null
-                    _ui.update { state -> state.copy(offlineTtsStatus = "Không phát được audio nghe thử: ${it.message}") }
+                    _ui.update { state -> state.copy(voiceActionStatus = "Không phát được audio nghe thử: ${it.message}") }
                 }
             }
         }
@@ -2443,12 +2355,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val infos = try { TtsManager.providerInfo() } catch (_: Exception) { emptyList() }
         val byKey = infos.associateBy { it.key.lowercase() }
         val catalog = listOf(
-            "android" to "Android TTS (ngoại tuyến)",
+            "android" to "Android TTS",
             "edge" to "Edge TTS",
             "capcut" to "CapCut TTS (vi-VN)",
             "gtts" to "Google Translate TTS",
             "tiktok" to "TikTok TTS (trực tuyến)",
-            "offline" to "AI ngoại tuyến",
             "gemini" to "Gemini AI",
             "zalo" to "Zalo AI TTS",
         )
@@ -2484,7 +2395,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (next == current) return
         if (!enabled) {
             val allKeys = s.ttsSources.map { it.key }.ifEmpty {
-                listOf("android", "edge", "capcut", "gtts", "tiktok", "offline")
+                listOf("android", "edge", "capcut", "gtts", "tiktok")
             }
             if ((allKeys - next).isEmpty()) {
                 _ui.update { it.copy(errorMessage = "Phải bật ít nhất một nguồn giọng đọc") }
@@ -2536,7 +2447,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val o=JSONObject(raw); Store.importBackup(o.getJSONObject("store").toString()); smartStore.importJson(o.optJSONObject("features")?:JSONObject())
         val set=o.optJSONObject("settings"); _ui.update {
             val rawImportedVoice=set?.optString("voice",it.selectedVoice)?:it.selectedVoice
-            val safeVoice=OfflineVoicePolicy.migrate(rawImportedVoice)
+            val safeVoice=TtsVoicePolicy.migrate(rawImportedVoice)
             it.copy(selectedVoice=safeVoice,
             playerBlur=(set?.optInt("playerBlur",it.playerBlur)?:it.playerBlur).coerceIn(0,100),playerVolume=(set?.optDouble("volume",it.playerVolume.toDouble())?.toFloat()?:it.playerVolume).coerceIn(0f,1f),voiceProfileEnabled=set?.optBoolean("voiceProfile",it.voiceProfileEnabled)?:it.voiceProfileEnabled,
             contentLanguage=set?.optString("contentLanguage",it.contentLanguage)?:it.contentLanguage,

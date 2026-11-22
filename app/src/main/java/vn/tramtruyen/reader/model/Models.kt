@@ -33,18 +33,15 @@ data class Story(
     val mirrorUrls: List<String> = emptyList(),
 )
 
-@Immutable data class VoiceOption(val id: String, val label: String, val sub: String)
-@Immutable data class VoiceGroup(val name: String, val voices: List<VoiceOption>)
-@Immutable
-data class OfflineVoiceModel(
+@Immutable data class VoiceOption(
     val id: String,
-    val name: String,
-    val gender: String,
-    val sizeMb: Int,
-    val installed: Boolean,
-    val source: String = "network",
-    val fromVBook: Boolean = false,
+    val label: String,
+    val sub: String,
+    val provider: String = "Khác",
+    val language: String = "",
+    val gender: String = "",
 )
+@Immutable data class VoiceGroup(val name: String, val voices: List<VoiceOption>)
 @Immutable data class Suggestion(val label: String, val url: String)
 
 enum class Tab { HOME, LIBRARY, SEARCH, SETTINGS }
@@ -79,7 +76,7 @@ data class ChapterUiModel(val index: Int, val title: String, val url: String, va
 
 @Immutable
 data class PlaybackMetadata(
-    val storyId: String = "", val storyTitle: String = "NovelBook", val author: String = "", val chapterTitle: String = "", val chapterIndex: Int = 1, val totalChapters: Int = 0, val coverUrl: String = "", val source: String? = null, val positionMs: Long = 0L, val durationMs: Long = 0L, val speed: Float = 1f, val voiceId: String = vn.tramtruyen.reader.engine.speech.OfflineVoicePolicy.DEFAULT_VOICE, val isPlaying: Boolean = false, val isBuffering: Boolean = false, val hasPrevious: Boolean = false, val hasNext: Boolean = false,
+    val storyId: String = "", val storyTitle: String = "NovelBook", val author: String = "", val chapterTitle: String = "", val chapterIndex: Int = 1, val totalChapters: Int = 0, val coverUrl: String = "", val source: String? = null, val positionMs: Long = 0L, val durationMs: Long = 0L, val speed: Float = 1f, val voiceId: String = vn.tramtruyen.reader.engine.speech.TtsVoicePolicy.DEFAULT_VOICE, val isPlaying: Boolean = false, val isBuffering: Boolean = false, val hasPrevious: Boolean = false, val hasNext: Boolean = false,
 )
 
 @Immutable data class PasteResult(val story: Story, val source: String)

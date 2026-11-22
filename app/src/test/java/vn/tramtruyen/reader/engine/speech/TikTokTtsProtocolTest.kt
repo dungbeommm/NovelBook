@@ -56,8 +56,8 @@ class TikTokTtsProtocolTest {
     @Test fun exposesTwoVietnameseVoicesWithoutChangingOtherProviders() {
         val vi = TikTokTtsProtocol.voices.filter { it.language == "vi-VN" }
         assertEquals(listOf("BV074_streaming", "BV075_streaming"), vi.map { it.id })
-        assertEquals("tiktok:BV075_streaming", OfflineVoicePolicy.migrate("tiktok:BV075_streaming"))
-        assertEquals("gtts:vi", OfflineVoicePolicy.migrate("gtts:vi"))
-        assertEquals("offline:mytam2", OfflineVoicePolicy.migrate("offline:mytam2"))
+        assertEquals("tiktok:BV075_streaming", TtsVoicePolicy.migrate("tiktok:BV075_streaming"))
+        assertEquals("gtts:vi", TtsVoicePolicy.migrate("gtts:vi"))
+        assertEquals("gtts:vi", TtsVoicePolicy.migrate("offline:mytam2"))
     }
 }
