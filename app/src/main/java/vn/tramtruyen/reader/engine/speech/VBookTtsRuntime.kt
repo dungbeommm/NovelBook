@@ -139,7 +139,14 @@ object VBookTtsRuntime {
             }
         }.getOrNull()
         if (latest != null) {
-            val published = bundled?.let(::parseCatalog).orEmpty() + parseCatalog(latest)
+            val local = bundled?.let(::parseCatalog).orEmpty()
+            val verified = local.associateBy { it.id }
+            val published = local + parseCatalog(latest).map { model ->
+                val known = verified[model.id]
+                if (known?.checksum == model.checksum && model.catalogSpeakerNames.isEmpty()) {
+                    model.copy(catalogSpeakerNames = known.catalogSpeakerNames)
+                } else model
+            }
             publishCatalog(published.associateBy { it.id }.values.toList(), loading = false)
         }
         else mutableState.value = mutableState.value.copy(loadingCatalog = false)

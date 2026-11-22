@@ -201,37 +201,41 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
         // Keep independent scroll positions and saveable form state per section.
         pageStateHolder.SaveableStateProvider(route ?: "settings_categories") {
             Column(Modifier.fillMaxSize()) {
+                val voicePage = route == "voice_sources" || route == "voice_clone"
                 Surface(color = cs.surface, modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = SettingsOuterPadding, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        IconButton(
+                        if (voicePage) FilledTonalIconButton(
+                            onClick = navigateBack,
+                            enabled = navigationActive && !pageTransition.isRunning,
+                        ) {
+                            Icon(Icons.Outlined.ArrowBack, contentDescription = "Quay lại")
+                        } else IconButton(
                             onClick = navigateBack,
                             enabled = navigationActive && !pageTransition.isRunning,
                         ) {
                             Icon(Icons.Outlined.ArrowBack,
                                 contentDescription = "Quay lại")
                         }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
+                        if (!voicePage) Spacer(Modifier.width(12.dp))
+                        if (!voicePage) Column(Modifier.weight(1f)) {
                             Text(
-                                text = if (route == "voice_clone") "Giọng từ bản ghi" else selected?.title ?: "Cài đặt",
+                                text = selected?.title ?: "Cài đặt",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                             )
-                            if (route != "voice_clone" && route != "voice_sources") {
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = selected?.subtitle ?: "Chọn một nhóm để mở tùy chỉnh",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = cs.onSurfaceVariant,
-                                )
-                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = selected?.subtitle ?: "Chọn một nhóm để mở tùy chỉnh",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant,
+                            )
                         }
                     }
                 }
-                HorizontalDivider(color = cs.outlineVariant.copy(alpha = .55f))
+                if (!voicePage) HorizontalDivider(color = cs.outlineVariant.copy(alpha = .55f))
                 when (route) {
                     "voice_sources" -> VoiceManagerPage(vm, ui) {
                         if (navigationActive && !pageTransition.isRunning) selectedId = "voice_clone"

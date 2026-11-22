@@ -14,7 +14,21 @@
     "model_format": "vmodel",
     "avatar_url": "",
     "preview_url": "",
-    "note": ""
+    "note": "",
+    "speaker_names": [
+      "Minh Tuấn",
+      "Thuỳ Linh",
+      "Ngọc Hân",
+      "Quốc Anh",
+      "Hoàng Long",
+      "Bá Hùng",
+      "Đức Thắng",
+      "Gia Bảo",
+      "Phương Thảo",
+      "Khánh Vy",
+      "Hải Yến",
+      "Minh Châu"
+    ]
   },
   {
     "id": "vi_north",
@@ -31,7 +45,21 @@
     "model_format": "vmodel",
     "avatar_url": "",
     "preview_url": "",
-    "note": ""
+    "note": "",
+    "speaker_names": [
+      "Thuỳ Linh",
+      "Minh Tuấn",
+      "Quốc Anh",
+      "Ngọc Hân",
+      "Hoàng Long",
+      "Bá Hùng",
+      "Phương Thảo",
+      "Khánh Vy",
+      "Hải Yến",
+      "Minh Châu",
+      "Đức Thắng",
+      "Gia Bảo"
+    ]
   },
   {
     "id": "banmai",
@@ -264,7 +292,34 @@
     "num_speakers": 25,
     "model_type": "vieneu",
     "model_format": "gguf",
-    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-turbo.zip"
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-turbo.zip",
+    "speaker_names": [
+      "Minh Quân Pro",
+      "Adam bựa",
+      "Trúc Ly",
+      "Anh Khôi",
+      "Mai Anh",
+      "Thùy Dung",
+      "Thiền Tâm Đức",
+      "Ngọc Huyền",
+      "Quang Sơn",
+      "Ngọc Trân",
+      "Minh Đức",
+      "Phạm Tuyên",
+      "Thái Sơn",
+      "Xuân Vĩnh",
+      "Thanh Bình",
+      "Ngọc Linh",
+      "Đoan Trang",
+      "Thục Đoan",
+      "Minh Triết",
+      "Mỹ Duyên",
+      "Quỳnh Anh",
+      "Đức Trí",
+      "Kim Thanh",
+      "Adam",
+      "Mạnh Dũng"
+    ]
   },
   {
     "id": "vifast-minh_quan_pro",
@@ -702,7 +757,19 @@
     "num_speakers": 10,
     "gender": "multi",
     "model_type": "korva",
-    "model_format": "mnn"
+    "model_format": "mnn",
+    "speaker_names": [
+      "Bảo Kim",
+      "Gia Bảo",
+      "Hoàng Nam",
+      "Hữu Đạt",
+      "Khánh Vy",
+      "Ngọc Diệp",
+      "Phương Linh",
+      "Quang Huy",
+      "Quỳnh Như",
+      "Thanh Phong"
+    ]
   },
   {
     "id": "supertonic-3",
@@ -715,7 +782,19 @@
     "num_speakers": 10,
     "gender": "multi",
     "model_type": "supertonic",
-    "model_format": "mnn"
+    "model_format": "mnn",
+    "speaker_names": [
+      "Luna",
+      "Nora",
+      "Mia",
+      "Elena",
+      "Sofia",
+      "Leo",
+      "Max",
+      "Noah",
+      "Theo",
+      "Hugo"
+    ]
   },
   {
     "id": "vieneu-v3-nano-v4",
