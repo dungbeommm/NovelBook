@@ -2355,7 +2355,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             } catch (_: Exception) {
                 null
             }
-            if (bytes.isNullOrEmpty()) {
+            if (bytes == null || bytes.isEmpty()) {
                 _ui.update { it.copy(offlineTtsStatus = TtsManager.lastError ?: "Không tạo được audio nghe thử") }
                 return@launch
             }
