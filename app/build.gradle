@@ -41,7 +41,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 143
-        versionName = "0.04-beta"
+        versionName = "0.04-beta.1"
         resValue "string", "web_parser_bundle_download_url",
             providers.gradleProperty("webParserBundleUrl").getOrElse(
                 "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/parsers/WebParser.json"

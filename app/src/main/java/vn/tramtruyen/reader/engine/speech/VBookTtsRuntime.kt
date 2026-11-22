@@ -81,6 +81,7 @@ object VBookTtsRuntime {
     private val commonDataFiles = listOf("en-word_id.bin", "vi-word_id.bin", "sea_g2p.bin")
     private const val VIFAST_PAUSE_MS = 150
     private const val RUNTIME_ASSET = "voice-runtime/vbook-1.2.7-c9117dfe"
+    private const val RUNTIME_REMOTE_BASE = "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/voice/runtime/vbook-1.2.7-c9117dfe"
     private const val MODEL_CATALOG_ASSET = "reader_catalog/vbook-models.json"
     private val engines = listOf(
         Piper.ENGINE, ViFast.ENGINE, VieNeu.ENGINE, VieNeuNano.ENGINE, Supertonic.ENGINE, Korva.ENGINE,
@@ -267,7 +268,12 @@ object VBookTtsRuntime {
 
     suspend fun synthesize(text: String, voiceId: String, speed: Double): ByteArray = withContext(Dispatchers.IO) {
         val context = appContext ?: error("TTS chưa khởi tạo")
-        if (!mutableState.value.runtimeReady) error("Bản cài này thiếu thư viện giọng đọc ARM64")
+        if (!mutableState.value.runtimeReady) {
+            check("arm64-v8a" in Build.SUPPORTED_ABIS) { "Thiết bị không hỗ trợ runtime giọng đọc ARM64" }
+            runCatching { getRuntime(context) }
+                .onFailure { error("Không tải được runtime giọng đọc: ${it.message ?: "lỗi không xác định"}") }
+            mutableState.value = mutableState.value.copy(runtimeReady = true)
+        }
         val modelId = voiceId.substringBefore(':')
         val speaker = voiceId.substringAfter(':', "0").toIntOrNull() ?: 0
         val model = mutableState.value.models.firstOrNull { it.model.id == modelId && it.installed }?.model
@@ -434,8 +440,28 @@ object VBookTtsRuntime {
     private fun getRuntime(context: Context): RuntimeHandle {
         runtimeHandle?.let { return it }
         val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET).apply { mkdirs() }
+        val remoteDex = File(runtimeCache, "remote-dex")
+        val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a")
+        val remoteReady = File(runtimeCache, "remote.ready")
+        if (!remoteReady.isFile) {
+            runCatching {
+                remoteDex.mkdirs(); remoteLibs.mkdirs()
+                (1..4).forEach { index ->
+                    val name = "engine-$index.jar"
+                    downloadRuntimeFile("$RUNTIME_REMOTE_BASE/dex/$name", File(remoteDex, name))
+                }
+                requiredNativeLibraries.forEach { name ->
+                    downloadRuntimeFile("$RUNTIME_REMOTE_BASE/lib/arm64-v8a/$name", File(remoteLibs, name))
+                }
+                remoteReady.writeText("1")
+            }
+        }
+        val useRemote = remoteReady.isFile &&
+            (1..4).all { File(remoteDex, "engine-$it.jar").isFile } &&
+            requiredNativeLibraries.all { File(remoteLibs, it).isFile }
         val dexArchives = (1..4).map { index ->
             val name = "engine-$index.jar"
+            if (useRemote) return@map File(remoteDex, name)
             val destination = File(runtimeCache, name)
             if (!destination.isFile) {
                 val temporary = File.createTempFile("engine-", ".jar", runtimeCache)
@@ -454,6 +480,8 @@ object VBookTtsRuntime {
         val info = context.applicationInfo
         val libraryPaths = listOfNotNull(info.sourceDir, *info.splitSourceDirs.orEmpty())
             .map { "$it!/lib/arm64-v8a" }
+            .toMutableList()
+        if (useRemote) libraryPaths += remoteLibs.absolutePath
         val loader = VBookDexClassLoader(
             dexArchives.joinToString(File.pathSeparator) { it.absolutePath },
             runtimeCache.absolutePath,
@@ -464,6 +492,17 @@ object VBookTtsRuntime {
         val appContextField = appClass.getDeclaredField("m").apply { isAccessible = true }
         appContextField.set(null, context.applicationContext)
         return RuntimeHandle(loader).also { runtimeHandle = it }
+    }
+
+    private fun downloadRuntimeFile(url: String, destination: File) {
+        val temporary = File(destination.parentFile, destination.name + ".part")
+        TtsUtil.http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+            if (!response.isSuccessful) error("Không tải được runtime giọng đọc (${response.code})")
+            val body = response.body ?: error("Runtime giọng đọc rỗng")
+            body.byteStream().use { input -> FileOutputStream(temporary).use { output -> input.copyTo(output) } }
+        }
+        check(temporary.length() > 0L) { "Runtime giọng đọc rỗng" }
+        check(temporary.renameTo(destination)) { "Không thể lưu runtime giọng đọc" }
     }
 
     private class VBookDexClassLoader(dexPath: String, optimizedDirectory: String, librarySearchPath: String, parent: ClassLoader) :
