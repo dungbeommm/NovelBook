@@ -52,7 +52,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
     var tool by rememberSaveable { mutableStateOf(AllVoices) }
     var gender by rememberSaveable { mutableStateOf(AllVoices) }
     var availability by rememberSaveable { mutableStateOf(AllVoices) }
-    var singleVoiceDownloads by rememberSaveable { mutableStateOf(true) }
+    var singleVoiceDownloads by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var deleteModelId by rememberSaveable { mutableStateOf<String?>(null) }
 
