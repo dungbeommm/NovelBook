@@ -229,7 +229,7 @@ object VietNormalizer {
         mapOf(
             "UBND" to "ủy ban nhân dân", "HĐND" to "hội đồng nhân dân",
             "TP" to "thành phố", "TPHCM" to "thành phố Hồ Chí Minh", "VN" to "Việt Nam",
-            "CNTT" to "công nghệ thông tin",
+            "AI" to "trí tuệ nhân tạo", "CNTT" to "công nghệ thông tin",
             "CEO" to "giám đốc điều hành", "GDP" to "tổng sản phẩm quốc nội",
             "USD" to "đô la Mỹ", "NXB" to "nhà xuất bản", "STT" to "số thứ tự",
             "CMND" to "chứng minh nhân dân", "CCCD" to "căn cước công dân",

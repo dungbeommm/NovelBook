@@ -191,13 +191,13 @@ object Store {
         val records = loadMap("chapter_history.json")
         val old = (records[sid]?.get("items") as? JsonArray)?.mapNotNull { it as? JsonObject }.orEmpty()
         val chapterId = str(chapter, "chapterId").ifBlank { str(chapter, "chapterUrl") }
+        val chapterIndex = (chapter["chapterIndex"] as? JsonPrimitive)?.intOrNull
         val next = listOf(JsonObject(chapter.toMutableMap().apply {
             put("lastListenedAt", JsonPrimitive(System.currentTimeMillis()))
-        })) + old.filterNot {
-            // Chỉ khử trùng theo chapterId: khớp chapterIndex không đủ, vì
-            // chương khác nhau có thể dùng chung chỉ số (tách lại EPUB,
-            // chỉ số theo trang khởi động lại...).
-            str(it, "chapterId").ifBlank { str(it, "chapterUrl") } == chapterId
+        })) + old.filterNot { previous ->
+            val previousIndex = (previous["chapterIndex"] as? JsonPrimitive)?.intOrNull
+            if (chapterIndex != null && previousIndex != null) previousIndex == chapterIndex
+            else str(previous, "chapterId").ifBlank { str(previous, "chapterUrl") } == chapterId
         }
         val limited = next.take(5000)
         records[sid] = buildJsonObject {
