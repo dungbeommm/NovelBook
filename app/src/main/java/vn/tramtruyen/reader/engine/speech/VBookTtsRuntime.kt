@@ -78,6 +78,8 @@ object VBookTtsRuntime {
     private const val CATALOG_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/models.json"
     private const val COMMON_DATA_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/data.zip"
     private const val DATA_VERSION = 3
+    private val commonDataFiles = listOf("en-word_id.bin", "vi-word_id.bin", "sea_g2p.bin")
+    private const val VIFAST_PAUSE_MS = 150
     private const val RUNTIME_ASSET = "voice-runtime/vbook-1.2.7-c9117dfe"
     private const val MODEL_CATALOG_ASSET = "reader_catalog/vbook-models.json"
     private val engines = listOf(
@@ -270,9 +272,14 @@ object VBookTtsRuntime {
         val speaker = voiceId.substringAfter(':', "0").toIntOrNull() ?: 0
         val model = mutableState.value.models.firstOrNull { it.model.id == modelId && it.installed }?.model
             ?: error("Model VBook chưa được tải")
+        val module = engines.getValue(model.modelType)
+        if (model.modelType == "vifast" && text.codePoints().noneMatch { Character.isLetterOrDigit(it) }) {
+            val sampleRate = module.sampleRate()
+            return@withContext pcmToWav(ShortArray(sampleRate * VIFAST_PAUSE_MS / 1000), sampleRate)
+        }
         engineLock.lock()
         try {
-            if (engines.getValue(model.modelType).usesCommonData()) ensureCommonData(context)
+            if (module.usesCommonData()) ensureCommonData(context)
             val engine = ensureEngine(context, model)
             val loader = engine.runtime.loader
             val continuationClass = loader.loadClass("kotlin.coroutines.Continuation")
@@ -280,7 +287,13 @@ object VBookTtsRuntime {
                 ?: error("API synthesize của VBook không tìm thấy")
             val language = engine.language
             val generated = invokeSuspend(engine.runtime, continuationClass, method, engine.instance, arrayOf(text, speaker, speed, false, false, language, null))
-            val pcm = generated as? ShortArray ?: error("VBook trả về định dạng âm thanh không hợp lệ")
+            currentCoroutineContext().ensureActive()
+            val pcm = generated as? ShortArray
+            if (pcm == null || pcm.isEmpty()) {
+                val detail = if (model.modelType == "vifast") viFastNativeError(loader) else null
+                val message = "${module.name()} · ${model.name}: không tạo được âm thanh cho đoạn này"
+                error(detail?.let { "$message ($it)" } ?: message)
+            }
             val sampleRate = engine.instance.javaClass.getMethod("e").invoke(engine.instance) as? Int ?: engine.modelRate
             pcmToWav(pcm, sampleRate)
         } finally {
@@ -333,7 +346,9 @@ object VBookTtsRuntime {
             val loaded = invokeSuspend(runtime, continuationClass, loadMethod, instance, arrayOf(metadata, path, null))
             if (loaded != true) {
                 val nativeError = runCatching { engineClass.getMethod("lastError").invoke(instance) as? String }.getOrNull()
-                error(nativeError ?: "VBook không nạp được model ${model.name}")
+                    ?: if (model.modelType == "vifast") viFastNativeError(runtime.loader) else null
+                val message = "${module.name()}: không mở được gói ${model.name}"
+                error(nativeError?.takeIf { it.isNotBlank() }?.let { "$message ($it)" } ?: message)
             }
             val sampleRate = runCatching { engineClass.getMethod("e").invoke(instance) as? Int }.getOrNull()
                 ?: sampleRateHint
@@ -343,6 +358,12 @@ object VBookTtsRuntime {
             throw error
         }
     }
+
+    private fun viFastNativeError(loader: ClassLoader): String? = runCatching {
+        val wrapper = loader.loadClass("com.reader.vifast.ViFastTtsNative")
+        val instance = wrapper.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+        (wrapper.getMethod("lastError").invoke(instance) as? String)?.trim()?.takeIf { it.isNotEmpty() }
+    }.getOrNull()
 
     private suspend fun invokeSuspend(
         runtime: RuntimeHandle,
@@ -469,7 +490,7 @@ object VBookTtsRuntime {
     private fun ensureCommonData(context: Context) {
         val dataDirectory = File(context.filesDir, "tts/data")
         val marker = File(dataDirectory, ".vbook-data-version")
-        if (marker.isFile && marker.readText().trim() == DATA_VERSION.toString()) return
+        if (marker.isFile && marker.readText().trim() == DATA_VERSION.toString() && hasCommonData(dataDirectory)) return
         val archive = File(context.cacheDir, "vbook-tts-data.zip")
         val stage = File(context.cacheDir, "vbook-tts-data-${System.nanoTime()}").apply { mkdirs() }
         try {
@@ -479,7 +500,7 @@ object VBookTtsRuntime {
                     ?: error("Dữ liệu dùng chung VBook rỗng")
             }
             unzipSafely(archive, stage, 100L * 1024 * 1024)
-            if (!File(stage, "en-word_id.bin").isFile || !File(stage, "vi-word_id.bin").isFile || !File(stage, "sea_g2p.bin").isFile) {
+            if (!hasCommonData(stage)) {
                 error("Gói dữ liệu dùng chung VBook không hợp lệ")
             }
             if (dataDirectory.exists()) dataDirectory.deleteRecursively()
@@ -492,6 +513,11 @@ object VBookTtsRuntime {
             archive.delete()
             stage.deleteRecursively()
         }
+    }
+
+    private fun hasCommonData(directory: File): Boolean = commonDataFiles.all { name ->
+        val file = File(directory, name)
+        file.isFile && file.length() > 0
     }
 
     private fun releaseEngine(engine: LoadedEngine?) {
