@@ -1,6 +1,0 @@
-# Doi ten file nay thanh `local.properties` (hoac de Android Studio tu tao).
-# Tro toi thu muc Android SDK tren may ban:
-#   Windows: sdk.dir=C\:\\Users\\<ten>\\AppData\\Local\\Android\\Sdk
-#   macOS:   sdk.dir=/Users/<ten>/Library/Android/sdk
-#   Linux:   sdk.dir=/home/<ten>/Android/Sdk
-sdk.dir=/path/to/Android/Sdk
