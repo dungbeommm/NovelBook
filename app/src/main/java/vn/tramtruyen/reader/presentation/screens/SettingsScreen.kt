@@ -117,7 +117,7 @@ private val SETTINGS_CATEGORIES = listOf(
     SettingsCategory("appearance", "Giao diện", "Chủ đề, màu sắc, chuyển động và rung", Icons.Outlined.Palette),
     SettingsCategory("language_content", "Ngôn ngữ & nội dung", "Ngôn ngữ trang và cách lấy nội dung chương", Icons.Outlined.Translate),
     SettingsCategory("pronunciation", "Cách đọc", "Quy tắc phát âm tùy chỉnh cho TTS", Icons.Outlined.RecordVoiceOver),
-    SettingsCategory("voice_sources", "Quản lý giọng đọc", "Tìm kiếm, nghe thử và chọn giọng", Icons.Outlined.RecordVoiceOver),
+    SettingsCategory("voice_sources", "Giọng đọc & runtime ngoại tuyến", "Tải runtime và cài từng model giọng đọc", Icons.Outlined.RecordVoiceOver),
     SettingsCategory("voice_providers", "Nguồn giọng đọc", "Bật nguồn giọng và cấu hình dịch vụ", Icons.Outlined.RecordVoiceOver),
     SettingsCategory("backup", "Sao lưu dữ liệu", "Xuất và khôi phục thư viện, tiến độ và cài đặt", Icons.Outlined.Backup),
 )

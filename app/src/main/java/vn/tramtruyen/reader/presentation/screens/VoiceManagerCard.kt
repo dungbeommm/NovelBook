@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,6 +38,7 @@ import vn.tramtruyen.reader.presentation.LocalBottomBarInset
 import vn.tramtruyen.reader.presentation.PlayerViewModel
 import vn.tramtruyen.reader.presentation.UiState
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -44,6 +46,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
     val catalog by VBookTtsRuntime.state.collectAsState()
+    val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var language by rememberSaveable { mutableStateOf(AllVoices) }
     var tool by rememberSaveable { mutableStateOf(AllVoices) }
@@ -162,6 +165,51 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
                         onClick = { singleVoiceDownloads = false },
                         label = { Text("Hiện cả gói dùng chung") },
                     )
+                }
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = cs.tertiaryContainer,
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Memory, null, tint = cs.onTertiaryContainer)
+                            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                                Text("Runtime giọng ngoại tuyến", fontWeight = FontWeight.SemiBold, color = cs.onTertiaryContainer)
+                                Text(
+                                    when {
+                                        catalog.runtimeDownloaded -> "Đã tải · có thể cài từng model giọng"
+                                        catalog.runtimeReady -> "Runtime tích hợp đã sẵn sàng · vẫn có thể tải gói riêng"
+                                        else -> "Tải một lần để cài và chạy giọng đọc ngoại tuyến"
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = cs.onTertiaryContainer,
+                                )
+                            }
+                            if (!catalog.runtimeDownloading) {
+                                FilledTonalButton(
+                                    onClick = { scope.launch { runCatching { VBookTtsRuntime.downloadRuntime(context) } } },
+                                    enabled = !catalog.runtimeDownloaded && "arm64-v8a" in android.os.Build.SUPPORTED_ABIS,
+                                ) {
+                                    Icon(Icons.Outlined.Download, null)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (catalog.runtimeDownloaded) "Đã tải" else "Tải runtime")
+                                }
+                            }
+                        }
+                        if (catalog.runtimeDownloading) {
+                            LinearProgressIndicator(
+                                progress = { catalog.runtimeProgress ?: 0f },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text("${((catalog.runtimeProgress ?: 0f) * 100).toInt()}%", style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (!catalog.runtimeReady && "arm64-v8a" !in android.os.Build.SUPPORTED_ABIS) {
+                            Text("Thiết bị này chưa hỗ trợ runtime ARM64.", color = cs.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
         }

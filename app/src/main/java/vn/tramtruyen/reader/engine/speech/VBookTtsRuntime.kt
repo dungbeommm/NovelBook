@@ -70,6 +70,9 @@ data class VBookTtsUiState(
     val models: List<VBookModelRow> = emptyList(),
     val loadingCatalog: Boolean = true,
     val runtimeReady: Boolean = false,
+    val runtimeDownloaded: Boolean = false,
+    val runtimeDownloading: Boolean = false,
+    val runtimeProgress: Float? = null,
     val message: String? = null,
 )
 
@@ -265,6 +268,70 @@ object VBookTtsRuntime {
         File(modelDirectory(context, id), "config.json").isFile
 
     fun isConfigured(): Boolean = mutableState.value.runtimeReady && mutableState.value.models.any { it.installed }
+
+    suspend fun downloadRuntime(context: Context) = withContext(Dispatchers.IO) {
+        if ("arm64-v8a" !in Build.SUPPORTED_ABIS) {
+            mutableState.value = mutableState.value.copy(message = "Thiết bị không hỗ trợ runtime giọng đọc ARM64")
+            error("Thiết bị không hỗ trợ runtime giọng đọc ARM64")
+        }
+        if (isRemoteRuntimeReady(context)) {
+            mutableState.value = mutableState.value.copy(runtimeReady = true, runtimeDownloaded = true, runtimeProgress = null)
+            return@withContext
+        }
+        mutableState.value = mutableState.value.copy(
+            runtimeDownloading = true,
+            runtimeProgress = 0f,
+            message = "Đang tải runtime giọng đọc…",
+        )
+        try {
+            val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET).apply { mkdirs() }
+            val remoteDex = File(runtimeCache, "remote-dex").apply { mkdirs() }
+            val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a").apply { mkdirs() }
+            val remoteReady = File(runtimeCache, "remote.ready")
+            remoteReady.delete()
+            val files = buildList {
+                (1..4).forEach { add("dex/engine-$it.jar" to File(remoteDex, "engine-$it.jar")) }
+                requiredNativeLibraries.forEach { add("lib/arm64-v8a/$it" to File(remoteLibs, it)) }
+            }
+            files.forEachIndexed { index, (remotePath, destination) ->
+                currentCoroutineContext().ensureActive()
+                if (!destination.isFile || destination.length() == 0L) {
+                    downloadRuntimeFile("$RUNTIME_REMOTE_BASE/$remotePath", destination)
+                }
+                mutableState.value = mutableState.value.copy(runtimeProgress = (index + 1f) / files.size)
+            }
+            check(isRemoteRuntimeReady(context)) { "Runtime tải về chưa đầy đủ" }
+            remoteReady.writeText("1")
+            mutableState.value = mutableState.value.copy(
+                runtimeReady = true,
+                runtimeDownloaded = true,
+                runtimeProgress = 1f,
+                message = "Runtime đã sẵn sàng. Bạn có thể tải từng giọng ngoại tuyến.",
+            )
+        } catch (error: Throwable) {
+            mutableState.value = mutableState.value.copy(
+                runtimeReady = isRuntimeReady(context),
+                runtimeDownloaded = isRemoteRuntimeReady(context),
+                message = "Tải runtime thất bại: ${error.message ?: "lỗi không xác định"}",
+            )
+            throw error
+        } finally {
+            mutableState.value = mutableState.value.copy(runtimeDownloading = false, runtimeProgress = null)
+        }
+    }
+
+    private fun isRuntimeReady(context: Context): Boolean =
+        "arm64-v8a" in Build.SUPPORTED_ABIS &&
+            (bundledLibraries.containsAll(requiredNativeLibraries) || isRemoteRuntimeReady(context))
+
+    private fun isRemoteRuntimeReady(context: Context): Boolean {
+        val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET)
+        val remoteReady = File(runtimeCache, "remote.ready")
+        val remoteDex = File(runtimeCache, "remote-dex")
+        val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a")
+        return remoteReady.isFile && (1..4).all { File(remoteDex, "engine-$it.jar").let { file -> file.isFile && file.length() > 0L } } &&
+            requiredNativeLibraries.all { File(remoteLibs, it).let { file -> file.isFile && file.length() > 0L } }
+    }
 
     suspend fun synthesize(text: String, voiceId: String, speed: Double): ByteArray = withContext(Dispatchers.IO) {
         val context = appContext ?: error("TTS chưa khởi tạo")
@@ -570,8 +637,8 @@ object VBookTtsRuntime {
         installedIds.clear()
         root.listFiles()?.filter { it.isDirectory && File(it, "config.json").isFile }?.forEach { installedIds.add(it.name) }
         mutableState.value = mutableState.value.copy(
-            runtimeReady = "arm64-v8a" in Build.SUPPORTED_ABIS &&
-                bundledLibraries.containsAll(requiredNativeLibraries),
+            runtimeReady = appContext?.let(::isRuntimeReady) ?: false,
+            runtimeDownloaded = appContext?.let(::isRemoteRuntimeReady) ?: false,
             models = mutableState.value.models.map { row ->
                 val installed = row.model.id in installedIds
                 row.copy(
