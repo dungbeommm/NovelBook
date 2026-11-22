@@ -301,6 +301,7 @@ object VBookTtsRuntime {
                 mutableState.value = mutableState.value.copy(runtimeProgress = (index + 1f) / files.size)
             }
             check(hasRemoteRuntimeFiles(context)) { "Runtime tải về chưa đầy đủ" }
+            (1..4).forEach { File(remoteDex, "engine-$it.jar").setReadOnly() }
             remoteReady.writeText("1")
             mutableState.value = mutableState.value.copy(
                 runtimeReady = true,
@@ -525,6 +526,7 @@ object VBookTtsRuntime {
                 requiredNativeLibraries.forEach { name ->
                     downloadRuntimeFile("$RUNTIME_REMOTE_BASE/lib/arm64-v8a/$name", File(remoteLibs, name))
                 }
+                (1..4).forEach { File(remoteDex, "engine-$it.jar").setReadOnly() }
                 remoteReady.writeText("1")
             }
         }
@@ -533,7 +535,7 @@ object VBookTtsRuntime {
             requiredNativeLibraries.all { File(remoteLibs, it).isFile }
         val dexArchives = (1..4).map { index ->
             val name = "engine-$index.jar"
-            if (useRemote) return@map File(remoteDex, name)
+            if (useRemote) return@map File(remoteDex, name).apply { setReadOnly() }
             val destination = File(runtimeCache, name)
             if (!destination.isFile) {
                 val temporary = File.createTempFile("engine-", ".jar", runtimeCache)
