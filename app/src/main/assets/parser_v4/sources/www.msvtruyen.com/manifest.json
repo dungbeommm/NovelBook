@@ -1,0 +1,32 @@
+{
+  "id": "www.msvtruyen.com",
+  "name": "www.msvtruyen.com",
+  "version": 4,
+  "engine": 4,
+  "domains": [
+    "msvtruyen.com",
+    "www.msvtruyen.com"
+  ],
+  "use_webview": true,
+  "may_need_vpn": false,
+  "use_html_parser": true,
+  "logo": "https://www.msvtruyen.com/photos/default/resize-2.png",
+  "homepage_url": "https://www.msvtruyen.com",
+  "capabilities": [
+    "resolve_input",
+    "story",
+    "chapter",
+    "chapter_list",
+    "random_chapter",
+    "cover",
+    "cover_smart",
+    "navigation",
+    "search",
+    "story_metadata",
+    "chapter_pagination",
+    "chapter_images",
+    "rich_search",
+    "toc_ajax",
+    "legacy_detail_compat"
+  ]
+}
