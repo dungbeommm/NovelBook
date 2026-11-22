@@ -118,6 +118,7 @@ private val SETTINGS_CATEGORIES = listOf(
     SettingsCategory("language_content", "Ngôn ngữ & nội dung", "Ngôn ngữ trang và cách lấy nội dung chương", Icons.Outlined.Translate),
     SettingsCategory("pronunciation", "Cách đọc", "Quy tắc phát âm tùy chỉnh cho TTS", Icons.Outlined.RecordVoiceOver),
     SettingsCategory("voice_sources", "Quản lý giọng đọc", "Tìm kiếm, nghe thử và chọn giọng", Icons.Outlined.RecordVoiceOver),
+    SettingsCategory("voice_providers", "Nguồn giọng đọc", "Bật nguồn giọng và cấu hình dịch vụ", Icons.Outlined.RecordVoiceOver),
     SettingsCategory("backup", "Sao lưu dữ liệu", "Xuất và khôi phục thư viện, tiến độ và cài đặt", Icons.Outlined.Backup),
 )
 
@@ -158,7 +159,11 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
     val navigateBack: () -> Unit = {
         if (navigationActive && !pageTransition.isRunning) {
             haptics.back()
-            if (selectedId != null) selectedId = null else vm.goBack()
+            when (selectedId) {
+                "voice_clone" -> selectedId = "voice_sources"
+                null -> vm.goBack()
+                else -> selectedId = null
+            }
         }
     }
     BackHandler(enabled = navigationActive) { navigateBack() }
@@ -177,7 +182,7 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
             ),
         transitionSpec = {
             // Forward: new section from the right. Back: current section to the right.
-            val returning = targetState == null
+            val returning = targetState == null || initialState == "voice_clone"
             (slideInHorizontally(
                 animationSpec = tween(Motion.NavEnterMs, easing = Motion.EnterEasing),
             ) { width -> if (returning) -width / 4 else width } + fadeIn(
@@ -206,91 +211,98 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
                             enabled = navigationActive && !pageTransition.isRunning,
                         ) {
                             Icon(Icons.Outlined.ArrowBack,
-                                contentDescription = if (selected == null) "Quay lại trang trước" else "Quay lại danh mục cài đặt")
+                                contentDescription = "Quay lại")
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                text = selected?.title ?: "Cài đặt",
+                                text = if (route == "voice_clone") "Giọng từ bản ghi" else selected?.title ?: "Cài đặt",
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Bold,
                             )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = selected?.subtitle ?: "Chọn một nhóm để mở tùy chỉnh",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = cs.onSurfaceVariant,
-                            )
+                            if (route != "voice_clone" && route != "voice_sources") {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = selected?.subtitle ?: "Chọn một nhóm để mở tùy chỉnh",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = cs.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
                 HorizontalDivider(color = cs.outlineVariant.copy(alpha = .55f))
-                LazyColumn(
-                    state = rememberLazyListState(),
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(
-                        start = SettingsOuterPadding,
-                        top = 16.dp,
-                        end = SettingsOuterPadding,
-                        bottom = 28.dp + LocalBottomBarInset.current,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (selected == null) {
-                        item {
-                            Text(
-                                "Danh mục cài đặt",
-                                modifier = Modifier.padding(bottom = 2.dp),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = cs.onSurfaceVariant,
-                            )
-                        }
-                        items(SETTINGS_CATEGORIES, key = { it.id }) { category ->
-                            SettingsCategoryTile(category = category, onClick = {
-                                if (navigationActive && !pageTransition.isRunning) {
-                                    haptics.tap()
-                                    selectedId = category.id
-                                }
-                            })
-                        }
-                    } else {
-                        item(key = "settings_content_${selected.id}") {
-                            when (selected.id) {
-                                "browser" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    BrowserSettingsCard(
-                                        adBlock = adBlock,
-                                        onOpenBrowser = {
-                                            context.startActivity(
-                                                Intent(context, SourceBrowserActivity::class.java)
-                                                    .putExtra(SourceBrowserActivity.EXTRA_URL, vm.browserUrl())
-                                            )
-                                        },
-                                        onToggle = { AdBlockManager.setEnabled(context, it) },
-                                    )
-                                    SectionLabel(Icons.Outlined.Dns, "DNS")
-                                    DnsSettingsCard()
-                                    SectionLabel(Icons.Outlined.Security, "VPN · 1.1.1.1 / WARP")
-                                    WarpSettingsCard()
-                                    SectionLabel(Icons.Outlined.Extension, "Bộ mở rộng")
-                                    AdBlockExtensionCard()
-                                    WebParserCard()
-                                    GeckoCard()
-                                }
-                                "appearance" -> AppearanceCard(vm, ui)
-                                "language_content" -> LanguageContentCard(vm, ui)
-                                "pronunciation" -> PronunciationCard(vm, ui)
-                                "backup" -> BackupCard(
-                                    ui,
-                                    onExport = { export.launch("TramTruyen-backup.json") },
-                                    onRestore = { restore.launch(arrayOf("application/json", "text/plain")) },
+                when (route) {
+                    "voice_sources" -> VoiceManagerPage(vm, ui) {
+                        if (navigationActive && !pageTransition.isRunning) selectedId = "voice_clone"
+                    }
+                    "voice_clone" -> VoiceClonePage()
+                    else -> LazyColumn(
+                        state = rememberLazyListState(),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentPadding = PaddingValues(
+                            start = SettingsOuterPadding,
+                            top = 16.dp,
+                            end = SettingsOuterPadding,
+                            bottom = 28.dp + LocalBottomBarInset.current,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (selected == null) {
+                            item {
+                                Text(
+                                    "Danh mục cài đặt",
+                                    modifier = Modifier.padding(bottom = 2.dp),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = cs.onSurfaceVariant,
                                 )
-                                "voice_sources" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    VoiceManagerCard(vm, ui)
-                                    TtsSourcesCard(vm, ui)
-                                    TikTokTtsCard(vm, ui)
-                                    GeminiCard(vm, ui)
-                                    ZaloCard(vm, ui)
+                            }
+                            items(SETTINGS_CATEGORIES, key = { it.id }) { category ->
+                                SettingsCategoryTile(category = category, onClick = {
+                                    if (navigationActive && !pageTransition.isRunning) {
+                                        haptics.tap()
+                                        selectedId = category.id
+                                    }
+                                })
+                            }
+                        } else {
+                            item(key = "settings_content_${selected.id}") {
+                                when (selected.id) {
+                                    "browser" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        BrowserSettingsCard(
+                                            adBlock = adBlock,
+                                            onOpenBrowser = {
+                                                context.startActivity(
+                                                    Intent(context, SourceBrowserActivity::class.java)
+                                                        .putExtra(SourceBrowserActivity.EXTRA_URL, vm.browserUrl())
+                                                )
+                                            },
+                                            onToggle = { AdBlockManager.setEnabled(context, it) },
+                                        )
+                                        SectionLabel(Icons.Outlined.Dns, "DNS")
+                                        DnsSettingsCard()
+                                        SectionLabel(Icons.Outlined.Security, "VPN · 1.1.1.1 / WARP")
+                                        WarpSettingsCard()
+                                        SectionLabel(Icons.Outlined.Extension, "Bộ mở rộng")
+                                        AdBlockExtensionCard()
+                                        WebParserCard()
+                                        GeckoCard()
+                                    }
+                                    "appearance" -> AppearanceCard(vm, ui)
+                                    "language_content" -> LanguageContentCard(vm, ui)
+                                    "pronunciation" -> PronunciationCard(vm, ui)
+                                    "backup" -> BackupCard(
+                                        ui,
+                                        onExport = { export.launch("TramTruyen-backup.json") },
+                                        onRestore = { restore.launch(arrayOf("application/json", "text/plain")) },
+                                    )
+                                    "voice_providers" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        TtsSourcesCard(vm, ui)
+                                        TikTokTtsCard(vm, ui)
+                                        GeminiCard(vm, ui)
+                                        ZaloCard(vm, ui)
+                                    }
                                 }
                             }
                         }

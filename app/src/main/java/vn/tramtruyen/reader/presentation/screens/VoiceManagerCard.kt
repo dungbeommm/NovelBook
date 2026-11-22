@@ -9,6 +9,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,291 +32,306 @@ import vn.tramtruyen.reader.model.VoiceGroup
 import vn.tramtruyen.reader.model.VoiceOption
 import vn.tramtruyen.reader.engine.speech.VBookModelRow
 import vn.tramtruyen.reader.engine.speech.VBookTtsRuntime
+import vn.tramtruyen.reader.presentation.LocalBottomBarInset
 import vn.tramtruyen.reader.presentation.PlayerViewModel
 import vn.tramtruyen.reader.presentation.UiState
 import vn.tramtruyen.reader.presentation.components.Radii
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun VoiceManagerCard(vm: PlayerViewModel, ui: UiState) {
+fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     val context = LocalContext.current
+    val catalog by VBookTtsRuntime.state.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
-    var languageFilter by rememberSaveable { mutableStateOf("Tất cả") }
-    var providerFilter by rememberSaveable { mutableStateOf("Tất cả") }
-    var genderFilter by rememberSaveable { mutableStateOf("Tất cả") }
-    var expandedProvider by rememberSaveable(ui.voiceGroups.firstOrNull()?.name) {
-        mutableStateOf(ui.voiceGroups.firstOrNull()?.name)
-    }
-    val collapsedFilteredProviders = remember { mutableStateListOf<String>() }
-    var showCloneSheet by rememberSaveable { mutableStateOf(false) }
-    var showVBookModels by rememberSaveable { mutableStateOf(true) }
-    val vbookState by VBookTtsRuntime.state.collectAsState()
-    val scope = rememberCoroutineScope()
+    var language by rememberSaveable { mutableStateOf(AllVoices) }
+    var tool by rememberSaveable { mutableStateOf(AllVoices) }
+    var gender by rememberSaveable { mutableStateOf(AllVoices) }
+    var availability by rememberSaveable { mutableStateOf(AllVoices) }
+    var expanded by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteModelId by rememberSaveable { mutableStateOf<String?>(null) }
+
     LaunchedEffect(context) {
         VBookTtsRuntime.loadCatalog(context)
         vm.refreshVoiceCatalog()
     }
-    val allVoices = ui.voiceGroups.flatMap { group -> group.voices }
-    val languageOptions = allVoices.map { it.language.ifBlank { "Khác" } }.distinct().sorted()
-    val providerOptions = ui.voiceGroups.map { it.name }.distinct().sorted()
-    val genderOptions = allVoices.map { it.gender.ifBlank { "Khác" } }.distinct().sorted()
-    val visibleGroups = ui.voiceGroups.mapNotNull { group ->
-        if (providerFilter != "Tất cả" && group.name != providerFilter) return@mapNotNull null
-        val voices = group.voices.filter { voice ->
-            val matchesQuery = query.isBlank() || listOf(
-                voice.label, voice.sub, voice.id, voice.provider, voice.language, voice.gender,
-            ).any { it.contains(query.trim(), ignoreCase = true) }
-            val matchesLanguage = languageFilter == "Tất cả" ||
-                (voice.language.ifBlank { "Khác" } == languageFilter)
-            val matchesGender = genderFilter == "Tất cả" ||
-                (voice.gender.ifBlank { "Khác" } == genderFilter)
-            matchesQuery && matchesLanguage && matchesGender
-        }
+
+    val allVoices = ui.voiceGroups.flatMap { it.voices }
+    val modelVoices = allVoices.filter { it.id.startsWith("vbook:") }
+        .groupBy { it.id.substringAfter(':').substringBefore(':') }
+    val serviceGroups = ui.voiceGroups.mapNotNull { group ->
+        val voices = group.voices.filterNot { it.id.startsWith("vbook:") }
         if (voices.isEmpty()) null else group.copy(voices = voices)
     }
+    val search = voiceSearchKey(query.trim())
+    fun matchesQuery(vararg labels: String) = search.isEmpty() || labels.any {
+        voiceSearchKey(it).contains(search)
+    }
+    fun matches(candidate: String, selected: String) = selected == AllVoices || candidate == selected
 
-    Surface(
-        shape = RoundedCornerShape(Radii.xl),
-        color = cs.surfaceVariant.copy(alpha = 0.42f),
+    val languageOptions = (catalog.models.map { languageLabel(it.model.language) } +
+        allVoices.map { languageLabel(it.language) }).distinct().sorted()
+    val toolOptions = (catalog.models.map { VBookTtsRuntime.engineLabel(it.model.modelType) } +
+        serviceGroups.map { it.name }).distinct().sorted()
+    val genderOptions = (catalog.models.map { genderLabel(it.model.gender) } +
+        allVoices.map { genderLabel(it.gender) }).distinct().sorted()
+    val visibleModels = catalog.models.filter { row ->
+        val model = row.model
+        val engine = VBookTtsRuntime.engineLabel(model.modelType)
+        matches(languageLabel(model.language), language) &&
+            matches(engine, tool) &&
+            (matches(genderLabel(model.gender), gender) || modelVoices[model.id].orEmpty().any {
+                matches(genderLabel(it.gender), gender)
+            }) &&
+            (matchesQuery(model.name, model.description, engine) ||
+                model.catalogSpeakerNames.any { matchesQuery(it) } ||
+                modelVoices[model.id].orEmpty().any { matchesQuery(it.label) })
+    }
+    val installed = visibleModels.filter { it.installed && availability != Downloadable && availability != Services }
+    val downloads = visibleModels.filter { !it.installed && availability != Installed && availability != Services }
+    val services = serviceGroups.mapNotNull { group ->
+        val voices = group.voices.filter {
+            matches(group.name, tool) && matches(languageLabel(it.language), language) &&
+                matches(genderLabel(it.gender), gender) && matchesQuery(it.label, it.sub, group.name)
+        }
+        if (voices.isEmpty() || availability == Installed || availability == Downloadable) null else group.copy(voices = voices)
+    }
+    val totalVoices = catalog.models.sumOf { it.voiceCount } + serviceGroups.sumOf { it.voices.size }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp + LocalBottomBarInset.current),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(cs.primaryContainer),
-                    contentAlignment = Alignment.Center,
+        item("search") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(Radii.lg),
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    placeholder = { Text("Tìm trong $totalVoices giọng") },
+                    trailingIcon = if (query.isEmpty()) null else {
+                        { IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, "Xóa tìm kiếm") } }
+                    },
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Icon(Icons.Outlined.RecordVoiceOver, null, tint = cs.onPrimaryContainer)
-                }
-                Spacer(Modifier.width(13.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Quản lý giọng đọc", style = MaterialTheme.typography.titleMedium)
-                    Text("${allVoices.size} giọng đang sẵn có", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    VoiceFilterMenu("Ngôn ngữ", language, listOf(AllVoices) + languageOptions) { language = it }
+                    VoiceFilterMenu("Công cụ", tool, listOf(AllVoices) + toolOptions) { tool = it }
+                    VoiceFilterMenu("Giới tính", gender, listOf(AllVoices) + genderOptions) { gender = it }
+                    VoiceFilterMenu("Trạng thái", availability, listOf(AllVoices, Installed, Downloadable, Services)) { availability = it }
                 }
             }
-
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(28.dp),
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                placeholder = { Text("Tìm kiếm ${allVoices.size} giọng nói") },
-                trailingIcon = {
-                    if (query.isNotBlank()) {
-                        IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, "Xóa tìm kiếm") }
-                    }
-                },
-            )
-
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                VoiceFilterMenu(
-                    label = "Ngôn ngữ", selected = languageFilter,
-                    options = listOf("Tất cả") + languageOptions,
-                    display = ::languageLabel,
-                    onSelected = { languageFilter = it },
-                )
-                VoiceFilterMenu(
-                    label = "Công cụ", selected = providerFilter,
-                    options = listOf("Tất cả") + providerOptions,
-                    onSelected = { providerFilter = it },
-                )
-                VoiceFilterMenu(
-                    label = "Giới tính", selected = genderFilter,
-                    options = listOf("Tất cả") + genderOptions,
-                    display = ::genderLabel,
-                    onSelected = { genderFilter = it },
-                )
+        }
+        item("status") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (!catalog.runtimeReady) {
+                    Text("Giọng ngoại tuyến cần bản cài ARM64.", color = cs.error, style = MaterialTheme.typography.bodySmall)
+                }
+                val status = ui.voiceActionStatus ?: catalog.message
+                if (!status.isNullOrBlank()) {
+                    Text(status, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                }
+                if (catalog.loadingCatalog && catalog.models.isEmpty()) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                }
             }
-
-            Surface(
-                shape = RoundedCornerShape(Radii.xl),
-                color = cs.surfaceVariant.copy(alpha = 0.42f),
-            ) {
-                Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (!vbookState.runtimeReady) {
-                        Text("Bản cài này thiếu thư viện giọng đọc ARM64", style = MaterialTheme.typography.bodySmall, color = cs.error)
-                    }
-                    if (vbookState.message != null) {
-                        Text(vbookState.message.orEmpty(), style = MaterialTheme.typography.bodySmall, color = cs.primary)
-                    }
-                    Row(
-                        Modifier.fillMaxWidth().clickable { showVBookModels = !showVBookModels },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Mô hình VBook", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, color = cs.primary)
-                        CountBadge(vbookState.models.size)
-                        Spacer(Modifier.width(8.dp))
-                        Icon(
-                            if (showVBookModels) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                            contentDescription = if (showVBookModels) "Thu gọn model VBook" else "Mở model VBook",
-                            tint = cs.primary,
-                        )
-                    }
-                    AnimatedVisibility(showVBookModels) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (vbookState.loadingCatalog && vbookState.models.isEmpty()) {
-                                LinearProgressIndicator(Modifier.fillMaxWidth())
-                                Text("Đang tải danh mục giọng VBook…", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                            }
-                            val modelRows = vbookState.models.filter { row ->
-                                val model = row.model
-                                (query.isBlank() || listOf(model.name, model.id, model.description, model.modelType, model.language)
-                                    .any { it.contains(query.trim(), ignoreCase = true) }) &&
-                                    (languageFilter == "Tất cả" || languageLabel(model.language) == languageFilter) &&
-                                    (providerFilter == "Tất cả" || providerFilter.contains("VBook", ignoreCase = true))
-                            }
-                            modelRows.forEach { row -> VBookModelRowCard(row, context, vm) }
+        }
+        item("my_voices") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                VoiceSectionTitle("Giọng của tôi", 0)
+                Surface(onClick = onOpenClone, shape = RoundedCornerShape(Radii.lg), color = cs.tertiaryContainer) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.GraphicEq, null, tint = cs.onTertiaryContainer)
+                        Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+                            Text("Giọng từ bản ghi", style = MaterialTheme.typography.titleMedium, color = cs.onTertiaryContainer)
+                            Text("Chọn tệp âm thanh và xem yêu cầu", style = MaterialTheme.typography.bodySmall, color = cs.onTertiaryContainer)
                         }
+                        Icon(Icons.Outlined.ChevronRight, null, tint = cs.onTertiaryContainer)
                     }
                 }
             }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Giọng của tôi", style = MaterialTheme.typography.titleMedium, color = cs.primary, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(10.dp))
-                CountBadge(0)
-            }
-            Surface(
-                onClick = { showCloneSheet = true },
-                shape = RoundedCornerShape(Radii.xl),
-                color = cs.surfaceVariant.copy(alpha = 0.55f),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(52.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Outlined.Add, null, tint = cs.onPrimaryContainer)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Tạo giọng", style = MaterialTheme.typography.titleSmall, color = cs.primary)
-                        Text("Tạo bản sao từ một đoạn ghi âm ngắn", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    }
-                    Icon(Icons.Outlined.ChevronRight, null)
+        }
+        if (installed.isNotEmpty()) {
+            item("installed") { VoiceSectionTitle(Installed, installed.size) }
+            items(installed, key = { it.model.id }) { row ->
+                val voices = modelVoices[row.model.id].orEmpty().filter { voice ->
+                    matches(genderLabel(voice.gender), gender) &&
+                        (matchesQuery(row.model.name, row.model.description, VBookTtsRuntime.engineLabel(row.model.modelType)) ||
+                            matchesQuery(voice.label))
                 }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Đang có sẵn", style = MaterialTheme.typography.titleMedium, color = cs.primary, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.width(10.dp))
-                CountBadge(visibleGroups.sumOf { it.voices.size })
-            }
-            if (visibleGroups.isEmpty()) {
-                Text(
-                    "Không tìm thấy giọng phù hợp. Hãy đổi bộ lọc hoặc bật một provider bên dưới.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = cs.onSurfaceVariant,
+                val open = expanded == row.model.id || (search.isNotEmpty() && expanded == null)
+                VoicePackageCard(
+                    row = row,
+                    voices = voices,
+                    expanded = open,
+                    onToggle = { expanded = if (open) "" else row.model.id },
+                    onAction = { deleteModelId = row.model.id },
+                    ui = ui,
+                    vm = vm,
                 )
             }
-            visibleGroups.forEach { group ->
-                val filtering = query.isNotBlank() || languageFilter != "Tất cả" ||
-                    genderFilter != "Tất cả" || providerFilter != "Tất cả"
-                val isExpanded = if (filtering) group.name !in collapsedFilteredProviders
-                    else expandedProvider == group.name
-                Surface(
-                    shape = RoundedCornerShape(Radii.xl),
-                    color = cs.surfaceVariant.copy(alpha = 0.42f),
-                ) {
+        }
+        if (downloads.isNotEmpty()) {
+            item("downloads") { VoiceSectionTitle(Downloadable, downloads.size) }
+            items(downloads, key = { it.model.id }) { row ->
+                VoicePackageCard(
+                    row = row,
+                    voices = emptyList(),
+                    expanded = false,
+                    onToggle = null,
+                    onAction = { vm.updateVoiceModel(row.model.id, install = true) },
+                    ui = ui,
+                    vm = vm,
+                    downloadEnabled = catalog.runtimeReady,
+                )
+            }
+        }
+        if (services.isNotEmpty()) {
+            item("services") { VoiceSectionTitle(Services, services.sumOf { it.voices.size }) }
+            items(services, key = { "provider:${it.name}" }) { group ->
+                val key = "provider:${group.name}"
+                val open = expanded == key || (search.isNotEmpty() && expanded == null)
+                Surface(shape = RoundedCornerShape(Radii.lg), color = cs.surfaceContainer) {
                     Column {
-                        Row(
-                            Modifier.fillMaxWidth().clickable {
-                                if (filtering) {
-                                    if (isExpanded) collapsedFilteredProviders.add(group.name)
-                                    else collapsedFilteredProviders.remove(group.name)
-                                } else {
-                                    expandedProvider = if (isExpanded) null else group.name
-                                }
-                            }.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(group.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Text(
-                                    "${group.voices.size} giọng · ${if (group.name.contains("VBook", true)) "mô hình trên thiết bị" else "dịch vụ giọng đọc"}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = cs.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                            }
-                            CountBadge(group.voices.size)
-                            Spacer(Modifier.width(8.dp))
-                            Icon(
-                                if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                                contentDescription = if (isExpanded) "Thu gọn ${group.name}" else "Mở ${group.name}",
-                                tint = cs.primary,
-                            )
-                        }
-                        AnimatedVisibility(visible = isExpanded) {
-                            Column {
-                                HorizontalDivider(color = cs.outlineVariant.copy(alpha = .65f))
-                                group.voices.forEach { voice ->
-                                    VoiceRow(voice, ui.selectedVoice, vm)
-                                }
-                            }
-                        }
+                        ListItem(
+                            headlineContent = { Text(group.name) },
+                            supportingContent = { Text("${group.voices.size} giọng") },
+                            leadingContent = { Icon(Icons.Outlined.RecordVoiceOver, null) },
+                            trailingContent = { Icon(if (open) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null) },
+                            modifier = Modifier.clickable { expanded = if (open) "" else key },
+                            colors = ListItemDefaults.colors(containerColor = cs.surfaceContainer),
+                        )
+                        if (open) group.voices.forEach { VoiceRow(it, ui.selectedVoice, vm) }
                     }
                 }
             }
-            ui.voiceActionStatus?.let { message ->
-                Text(message, style = MaterialTheme.typography.bodySmall, color = cs.error)
-            }
+        }
+        if (installed.isEmpty() && downloads.isEmpty() && services.isEmpty() && !catalog.loadingCatalog) {
+            item("empty") { Text("Không tìm thấy giọng hoặc gói phù hợp.", color = cs.onSurfaceVariant) }
         }
     }
 
-    if (showCloneSheet) {
-        VoiceCloneSheet(context = context, onDismiss = { showCloneSheet = false })
+    val pending = catalog.models.firstOrNull { it.model.id == deleteModelId && it.installed }
+    if (pending != null) {
+        val selected = ui.selectedVoice.startsWith("vbook:${pending.model.id}:")
+        AlertDialog(
+            onDismissRequest = { deleteModelId = null },
+            title = { Text(if (selected) "Gói giọng đang được chọn" else "Xóa ${pending.model.name}?") },
+            text = { Text(if (selected) "Chọn giọng khác trước khi xóa gói này." else "Bạn có thể tải lại gói này sau.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (!selected) vm.updateVoiceModel(pending.model.id, install = false)
+                    deleteModelId = null
+                }) { Text(if (selected) "Đóng" else "Xóa gói") }
+            },
+            dismissButton = if (selected) null else {
+                { TextButton(onClick = { deleteModelId = null }) { Text("Hủy") } }
+            },
+        )
+    }
+}
+
+private const val AllVoices = "Tất cả"
+private const val Installed = "Đã cài"
+private const val Downloadable = "Có thể tải"
+private const val Services = "Nguồn giọng khác"
+private val voiceDiacritics = Regex("\\p{M}+")
+
+private fun voiceSearchKey(value: String): String =
+    java.text.Normalizer.normalize(value.lowercase(Locale.ROOT).replace('đ', 'd'), java.text.Normalizer.Form.NFD)
+        .replace(voiceDiacritics, "")
+
+@Composable
+private fun VoiceSectionTitle(title: String, count: Int) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        CountBadge(count)
     }
 }
 
 @Composable
-private fun VBookModelRowCard(row: VBookModelRow, context: Context, vm: PlayerViewModel) {
+private fun VoicePackageCard(
+    row: VBookModelRow,
+    voices: List<VoiceOption>,
+    expanded: Boolean,
+    onToggle: (() -> Unit)?,
+    onAction: () -> Unit,
+    ui: UiState,
+    vm: PlayerViewModel,
+    downloadEnabled: Boolean = true,
+) {
     val cs = MaterialTheme.colorScheme
-    val scope = rememberCoroutineScope()
-    Surface(shape = RoundedCornerShape(Radii.lg), color = cs.surface.copy(alpha = .72f)) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(row.model.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
+    val engine = VBookTtsRuntime.engineLabel(row.model.modelType)
+    Surface(shape = RoundedCornerShape(Radii.lg), color = cs.surfaceContainer) {
+        Column {
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(44.dp).background(cs.secondaryContainer, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.GraphicEq, null, tint = cs.onSecondaryContainer)
+                }
+                Column(
+                    Modifier.weight(1f).then(if (onToggle != null) Modifier.clickable(onClick = onToggle) else Modifier)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Text(row.model.name, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        listOf(row.model.description, VBookTtsRuntime.engineLabel(row.model.modelType), "${row.voiceCount} giọng", formatModelSize(row.model.sizeBytes))
-                            .filter { it.isNotBlank() }.joinToString(" · "),
+                        "$engine · ${row.voiceCount} giọng · ${formatModelSize(row.model.sizeBytes)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = cs.onSurfaceVariant,
-                        maxLines = 2,
                     )
                 }
-                when {
-                    row.progress != null -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    row.installed -> {
-                        IconButton(onClick = {
-                            scope.launch { runCatching { VBookTtsRuntime.removeModel(row.model.id) }; vm.refreshVoiceCatalog() }
-                        }) { Icon(Icons.Outlined.DeleteOutline, "Xóa ${row.model.name}", tint = cs.error) }
+                if (onToggle != null) {
+                    IconButton(onClick = onToggle) {
+                        Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Thu gọn giọng" else "Mở danh sách giọng")
                     }
-                    else -> IconButton(onClick = {
-                        scope.launch {
-                            runCatching { VBookTtsRuntime.installModel(row.model.id) }
-                            vm.refreshVoiceCatalog()
-                        }
-                    }) { Icon(Icons.Outlined.Download, "Tải ${row.model.name}", tint = cs.primary) }
+                }
+                val preview = row.model.previewUrl
+                if (!row.installed && preview != null) {
+                    IconButton(onClick = { vm.previewVoiceModel(preview) }) {
+                        Icon(Icons.Outlined.PlayArrow, "Nghe mẫu ${row.model.name}")
+                    }
+                }
+                if (row.progress != null) {
+                    CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                } else {
+                    FilledTonalIconButton(onClick = onAction, enabled = row.installed || downloadEnabled) {
+                        if (row.installed) Icon(Icons.Outlined.DeleteOutline, "Xóa ${row.model.name}")
+                        else Icon(Icons.Outlined.Download, "Tải ${row.model.name}")
+                    }
                 }
             }
             if (row.progress != null) {
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { row.progress.coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                LinearProgressIndicator(progress = { row.progress.coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+            }
+            if (expanded) {
+                HorizontalDivider(color = cs.outlineVariant)
+                if (voices.isEmpty()) {
+                    Text(
+                        "Bật nguồn giọng ngoại tuyến trong mục Nguồn giọng đọc để sử dụng.",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant,
+                    )
+                }
+                voices.forEach { voice -> VoiceRow(voice.copy(label = voice.label.removePrefix(row.model.name + " · ")), ui.selectedVoice, vm) }
             }
         }
     }
 }
-
 private fun formatModelSize(bytes: Long): String = when {
     bytes >= 1024L * 1024L -> String.format(Locale.getDefault(), "%.1f MB", bytes / (1024.0 * 1024.0))
     bytes >= 1024L -> "${bytes / 1024L} KB"
@@ -401,6 +418,7 @@ private fun languageLabel(language: String): String = when (language.lowercase()
     "zh", "cmn" -> "Tiếng Trung"
     "ja", "jpn" -> "Tiếng Nhật"
     "ko", "kor" -> "Tiếng Hàn"
+    "mul" -> "Đa ngôn ngữ"
     "khác", "" -> "Khác"
     else -> language
 }
@@ -411,109 +429,51 @@ private fun genderLabel(gender: String): String = when (gender.uppercase()) {
     "NEUTRAL" -> "Trung tính"
     "MULTI" -> "Nhiều giọng"
     "OTHER", "" -> "Khác"
-    else -> ""
+    else -> "Khác"
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun VoiceCloneSheet(context: Context, onDismiss: () -> Unit) {
+fun VoiceClonePage() {
+    val context = LocalContext.current
     val cs = MaterialTheme.colorScheme
-    var recordingName by rememberSaveable { mutableStateOf("") }
-    var showTips by rememberSaveable { mutableStateOf(true) }
-    val recordingPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        recordingName = uri?.let { displayName(context, it) }.orEmpty()
+    var recording by rememberSaveable { mutableStateOf("") }
+    var showTips by rememberSaveable { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) recording = displayName(context, uri)
     }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(
+        Modifier.fillMaxSize().padding(bottom = LocalBottomBarInset.current),
+    ) {
         Column(
-            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 28.dp),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) { Icon(Icons.Outlined.ArrowBack, "Quay lại") }
-                Text("Nhân bản giọng nói", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            }
-            Box(
-                Modifier.size(88.dp).align(Alignment.CenterHorizontally).clip(CircleShape).background(cs.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Outlined.AutoAwesome, null, tint = cs.onPrimaryContainer, modifier = Modifier.size(42.dp)) }
-            Text(
-                "Chọn một đoạn ghi âm ngắn làm mẫu giọng. Ghi âm rõ, đều và chỉ có một người nói để có kết quả tốt hơn.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = cs.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                AssistChip(onClick = {}, enabled = false, label = { Text("10–30 giây") })
-                AssistChip(onClick = {}, enabled = false, label = { Text("Một người nói") })
-                AssistChip(onClick = {}, enabled = false, label = { Text("Không tạp âm") })
-            }
-            Text("Bản ghi âm", style = MaterialTheme.typography.titleMedium, color = cs.primary, fontWeight = FontWeight.SemiBold)
-            Surface(
-                onClick = { recordingPicker.launch(arrayOf("audio/*")) },
-                shape = RoundedCornerShape(Radii.xl),
-                color = cs.surfaceVariant.copy(alpha = .5f),
-            ) {
-                Row(Modifier.fillMaxWidth().padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.UploadFile, null, tint = cs.primary, modifier = Modifier.size(28.dp))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(if (recordingName.isBlank()) "Chọn file ghi âm" else recordingName, style = MaterialTheme.typography.titleSmall, maxLines = 1)
-                        Text("MP3, WAV, M4A, FLAC…", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
-                    }
-                    Icon(Icons.Outlined.ChevronRight, null)
+            Surface(shape = RoundedCornerShape(Radii.lg), color = cs.tertiaryContainer) {
+                Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Outlined.GraphicEq, null, tint = cs.onTertiaryContainer)
+                    Text("Bản ghi làm mẫu", style = MaterialTheme.typography.titleLarge, color = cs.onTertiaryContainer)
+                    Text("Chọn đoạn nói của một người, dài 10–30 giây, thu ở nơi yên tĩnh.", color = cs.onTertiaryContainer)
                 }
             }
-            Surface(shape = RoundedCornerShape(Radii.xl), color = cs.surfaceVariant.copy(alpha = .42f)) {
-                Column(Modifier.padding(16.dp)) {
-                    Row(
-                        Modifier.fillMaxWidth().clickable { showTips = !showTips },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Outlined.Info, null, tint = cs.primary)
-                        Spacer(Modifier.width(10.dp))
-                        Text("Mẹo để giọng giống nhất", modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        Icon(if (showTips) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown, null)
-                    }
-                    AnimatedVisibility(showTips) {
-                        Column(Modifier.padding(start = 34.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Tip("Đọc tự nhiên trong 10–30 giây, như đang đọc to một trang sách.")
-                            Tip("Chọn nơi yên tĩnh; tắt nhạc và tránh giọng người khác, tiếng quạt hoặc tiếng vọng.")
-                            Tip("Nói rõ, đều, tốc độ vừa phải; không hét và không thì thầm.")
-                            Tip("Đặt micro gần vừa đủ, tránh tiếng gió và âm thanh bị vỡ.")
-                        }
-                    }
-                }
+            OutlinedButton(onClick = { picker.launch(arrayOf("audio/*")) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.UploadFile, null)
+                Spacer(Modifier.width(10.dp))
+                Text(recording.ifBlank { "Chọn tệp MP3, WAV, M4A hoặc FLAC" })
             }
-            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().height(58.dp)) {
-                Text("Tạo giọng", fontSize = 18.sp)
+            HorizontalDivider()
+            TextButton(onClick = { showTips = !showTips }) {
+                Text(if (showTips) "Ẩn hướng dẫn thu âm" else "Xem hướng dẫn thu âm")
             }
-            Text(
-                if (recordingName.isBlank()) {
-                    "NovelBook chưa kết nối dịch vụ nhân bản giọng nói. Các giọng có thể dùng hiện nằm trong danh sách quản lý."
-                } else {
-                    "Đã chọn tệp mẫu. Để tạo giọng từ tệp này, ứng dụng cần được kết nối với dịch vụ nhân bản giọng nói."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = cs.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            AnimatedVisibility(showTips) {
+                Text("Đọc rõ và đều. Để micro gần vừa đủ, tắt nhạc nền và tránh nơi có tiếng vọng.", color = cs.onSurfaceVariant)
+            }
+        }
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Tính năng tạo giọng từ bản ghi chưa khả dụng trong NovelBook.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("Tạo giọng") }
         }
     }
 }
-
-@Composable
-private fun Tip(text: String) {
-    Row(verticalAlignment = Alignment.Top) {
-        Text("•", color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(end = 8.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
 private fun displayName(context: Context, uri: Uri): String {
     return runCatching {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->

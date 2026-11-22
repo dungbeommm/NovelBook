@@ -55,6 +55,8 @@ data class VBookModel(
     val modelType: String,
     val format: String,
     val sampleRate: Int,
+    val previewUrl: String? = null,
+    val catalogSpeakerNames: List<String> = emptyList(),
 )
 
 data class VBookModelRow(
@@ -147,6 +149,7 @@ object VBookTtsRuntime {
         val context = appContext ?: error("TTS chưa khởi tạo")
         val row = mutableState.value.models.firstOrNull { it.model.id == id } ?: error("Không tìm thấy model $id")
         val model = row.model
+        updateModelRow(id) { it.copy(progress = 0f) }
         val stage = File(context.cacheDir, "vbook-model-$id-${System.nanoTime()}")
         stage.mkdirs()
         val archive = File(stage, "model.zip.part")
@@ -247,6 +250,9 @@ object VBookTtsRuntime {
             }
         }
     }
+
+    fun isModelInstalled(context: Context, id: String): Boolean =
+        File(modelDirectory(context, id), "config.json").isFile
 
     fun isConfigured(): Boolean = mutableState.value.runtimeReady && mutableState.value.models.any { it.installed }
 
@@ -532,6 +538,7 @@ object VBookTtsRuntime {
                 val downloadUrl = item.optString("download_url", "")
                 val checksum = item.optString("checksum", "")
                 if (!id.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) continue
+                if (modelType == "vieneu_nano" && id != TtsVoicePolicy.NANO_V4_MODEL) continue
                 val engine = engines[modelType] ?: continue
                 val format = item.optString("model_format", engine.format())
                 if (!engine.accepts(format)) continue
@@ -546,6 +553,12 @@ object VBookTtsRuntime {
                     downloadUrl = downloadUrl, speakerCount = item.optInt("num_speakers", 1).coerceAtLeast(1),
                     gender = item.optString("gender", "multi"), modelType = modelType,
                     format = format, sampleRate = item.optInt("sample_rate", engine.sampleRate()),
+                    previewUrl = item.optString("preview_url").takeIf {
+                        it.startsWith("https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/")
+                    },
+                    catalogSpeakerNames = item.optJSONArray("speaker_names")?.let { names ->
+                        (0 until names.length()).map { names.optString(it) }.filter(String::isNotBlank)
+                    }.orEmpty(),
                 ))
             }
         }

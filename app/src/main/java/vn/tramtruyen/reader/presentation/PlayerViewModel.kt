@@ -27,6 +27,7 @@ import vn.tramtruyen.reader.engine.speech.GeminiTtsProvider
 import vn.tramtruyen.reader.engine.speech.ZaloTtsProvider
 import vn.tramtruyen.reader.engine.speech.TtsManager
 import vn.tramtruyen.reader.engine.speech.TtsVoicePolicy
+import vn.tramtruyen.reader.engine.speech.VBookTtsRuntime
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -253,7 +254,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 monetTheme = true,
                 monetSeed = p.monetSeed,
                 accentColor = p.accentColor,
-                selectedVoice = p.selectedVoice,
+                selectedVoice = availableSavedVoice(p.selectedVoice),
                 autoNextChapter = p.autoNextChapter,
                 karaokeFontSize = p.karaokeFontSize,
                 playerVolume = p.playerVolume,
@@ -344,6 +345,39 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshVoiceCatalog() = loadVoices()
+
+    private fun availableSavedVoice(key: String): String {
+        val voice = TtsVoicePolicy.migrate(key)
+        val modelId = TtsVoicePolicy.NANO_V4_MODEL
+        if (voice.startsWith("vbook:$modelId:") && !VBookTtsRuntime.isModelInstalled(getApplication(), modelId)) {
+            return TtsVoicePolicy.DEFAULT_VOICE
+        }
+        return voice
+    }
+
+    private val voiceModelOperations = mutableSetOf<String>()
+
+    fun updateVoiceModel(modelId: String, install: Boolean) {
+        if (!install && s.selectedVoice.startsWith("vbook:$modelId:")) {
+            _ui.update { it.copy(voiceActionStatus = "Chọn giọng khác trước khi xóa gói đang dùng.") }
+            return
+        }
+        if (!voiceModelOperations.add(modelId)) return
+        _ui.update { it.copy(voiceActionStatus = null) }
+        viewModelScope.launch {
+            try {
+                if (install) VBookTtsRuntime.installModel(modelId) else VBookTtsRuntime.removeModel(modelId)
+                refreshVoiceCatalog()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _ui.update { it.copy(voiceActionStatus = error.message ?: "Không thể cập nhật gói giọng") }
+            } finally {
+                voiceModelOperations.remove(modelId)
+            }
+        }
+    }
+
 
     private fun genderLabel(g: String): String = when (g.uppercase()) {
         "MALE" -> "Nam"; "FEMALE" -> "Nữ"; "NEUTRAL" -> "Trung tính"; else -> ""
@@ -710,7 +744,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
                 val profile = if (s.voiceProfileEnabled) smartStore.profile(story.id) else null
                 val profileVoice = profile?.first?.let { stored ->
-                    TtsVoicePolicy.migrate(stored)
+                    availableSavedVoice(stored)
                 }
                 val effectiveVoice = profileVoice ?: s.selectedVoice
                 val effectiveSpeed = profile?.second?.coerceIn(0.5f,3f) ?: s.speed
@@ -2259,6 +2293,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Generate and play a short sample without changing the selected story voice. */
     fun previewVoice(voiceId: String) {
+        _ui.update { it.copy(voiceActionStatus = null) }
         viewModelScope.launch(Dispatchers.IO) {
             val bytes = try {
                 TtsManager.synthesize("Xin chào, đây là giọng đọc thử của NovelBook.", voiceId, 1.0, 1.0)
@@ -2272,28 +2307,41 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             withContext(Dispatchers.Main) {
-                runCatching {
-                    voicePreviewPlayer?.release()
-                    val player = MediaPlayer()
-                    voicePreviewPlayer = player
-                    player.setDataSource(ByteArrayMediaDataSource(bytes))
-                    player.setOnPreparedListener { it.start() }
-                    player.setOnCompletionListener {
-                        it.release()
-                        if (voicePreviewPlayer === it) voicePreviewPlayer = null
-                    }
-                    player.setOnErrorListener { mp, _, _ ->
-                        mp.release()
-                        if (voicePreviewPlayer === mp) voicePreviewPlayer = null
-                        true
-                    }
-                    player.prepareAsync()
-                }.onFailure {
-                    voicePreviewPlayer?.release()
-                    voicePreviewPlayer = null
-                    _ui.update { state -> state.copy(voiceActionStatus = "Không phát được audio nghe thử: ${it.message}") }
-                }
+                playVoicePreview { player -> player.setDataSource(ByteArrayMediaDataSource(bytes)) }
             }
+        }
+    }
+
+    fun previewVoiceModel(url: String) {
+        _ui.update { it.copy(voiceActionStatus = null) }
+        playVoicePreview { it.setDataSource(url) }
+    }
+
+    private fun playVoicePreview(setSource: (MediaPlayer) -> Unit) {
+        voicePreviewPlayer?.release()
+        voicePreviewPlayer = null
+        runCatching {
+            val player = MediaPlayer()
+            voicePreviewPlayer = player
+            setSource(player)
+            player.setOnPreparedListener { if (voicePreviewPlayer === it) it.start() }
+            player.setOnCompletionListener {
+                it.release()
+                if (voicePreviewPlayer === it) voicePreviewPlayer = null
+            }
+            player.setOnErrorListener { failed, _, _ ->
+                failed.release()
+                if (voicePreviewPlayer === failed) {
+                    voicePreviewPlayer = null
+                    _ui.update { it.copy(voiceActionStatus = "Không phát được mẫu giọng") }
+                }
+                true
+            }
+            player.prepareAsync()
+        }.onFailure {
+            voicePreviewPlayer?.release()
+            voicePreviewPlayer = null
+            _ui.update { state -> state.copy(voiceActionStatus = "Không phát được mẫu giọng: ${it.message}") }
         }
     }
 
@@ -2447,7 +2495,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val o=JSONObject(raw); Store.importBackup(o.getJSONObject("store").toString()); smartStore.importJson(o.optJSONObject("features")?:JSONObject())
         val set=o.optJSONObject("settings"); _ui.update {
             val rawImportedVoice=set?.optString("voice",it.selectedVoice)?:it.selectedVoice
-            val safeVoice=TtsVoicePolicy.migrate(rawImportedVoice)
+            val safeVoice=availableSavedVoice(rawImportedVoice)
             it.copy(selectedVoice=safeVoice,
             playerBlur=(set?.optInt("playerBlur",it.playerBlur)?:it.playerBlur).coerceIn(0,100),playerVolume=(set?.optDouble("volume",it.playerVolume.toDouble())?.toFloat()?:it.playerVolume).coerceIn(0f,1f),voiceProfileEnabled=set?.optBoolean("voiceProfile",it.voiceProfileEnabled)?:it.voiceProfileEnabled,
             contentLanguage=set?.optString("contentLanguage",it.contentLanguage)?:it.contentLanguage,
