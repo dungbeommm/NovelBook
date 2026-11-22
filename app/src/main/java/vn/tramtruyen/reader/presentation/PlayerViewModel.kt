@@ -6,6 +6,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.MediaPlayer
 import android.os.Build
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.AndroidViewModel
@@ -106,6 +107,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var playToken = 0
     private val audioCache = LruByteCache()
     private val pcmCache = LruPcmCache()
+    @Volatile private var voicePreviewPlayer: MediaPlayer? = null
     /** Cùng một chapter/index/voice chỉ được tổng hợp một lần dù feeder và prefetch gặp nhau. */
     private val synthInFlight = java.util.concurrent.ConcurrentHashMap<String, CompletableDeferred<ByteArray?>>()
     /** Huy o phia chu so huu khong duoc nem thang CancellationException vao cac
@@ -2343,6 +2345,46 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun closeSheet() = _ui.update { it.copy(sheet = null) }
     fun clearError() = _ui.update { it.copy(errorMessage = null) }
 
+    /** Generate and play a short sample without changing the selected story voice. */
+    fun previewVoice(voiceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bytes = try {
+                TtsManager.synthesize("Xin chào, đây là giọng đọc thử của NovelBook.", voiceId, 1.0, 1.0)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (bytes.isNullOrEmpty()) {
+                _ui.update { it.copy(offlineTtsStatus = TtsManager.lastError ?: "Không tạo được audio nghe thử") }
+                return@launch
+            }
+            withContext(Dispatchers.Main) {
+                runCatching {
+                    voicePreviewPlayer?.release()
+                    val player = MediaPlayer()
+                    voicePreviewPlayer = player
+                    player.setDataSource(ByteArrayMediaDataSource(bytes))
+                    player.setOnPreparedListener { it.start() }
+                    player.setOnCompletionListener {
+                        it.release()
+                        if (voicePreviewPlayer === it) voicePreviewPlayer = null
+                    }
+                    player.setOnErrorListener { mp, _, _ ->
+                        mp.release()
+                        if (voicePreviewPlayer === mp) voicePreviewPlayer = null
+                        true
+                    }
+                    player.prepareAsync()
+                }.onFailure {
+                    voicePreviewPlayer?.release()
+                    voicePreviewPlayer = null
+                    _ui.update { state -> state.copy(offlineTtsStatus = "Không phát được audio nghe thử: ${it.message}") }
+                }
+            }
+        }
+    }
+
     // ---------- settings ----------
     fun setUiTheme(t: UiTheme) { _ui.update { it.copy(uiTheme = t) }; persist() }
     fun setColorMode(mode: ColorMode) {
@@ -3337,6 +3379,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        voicePreviewPlayer?.runCatching { release() }
+        voicePreviewPlayer = null
         ReadingMediaBridge.unregister(mediaCommands)
         persistProgressNow()
         mediaSessionDismissed = true

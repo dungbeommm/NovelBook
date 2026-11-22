@@ -119,7 +119,7 @@ private val SETTINGS_CATEGORIES = listOf(
     SettingsCategory("appearance", "Giao diện", "Chủ đề, màu sắc, chuyển động và rung", Icons.Outlined.Palette),
     SettingsCategory("language_content", "Ngôn ngữ & nội dung", "Ngôn ngữ trang và cách lấy nội dung chương", Icons.Outlined.Translate),
     SettingsCategory("pronunciation", "Cách đọc", "Quy tắc phát âm tùy chỉnh cho TTS", Icons.Outlined.RecordVoiceOver),
-    SettingsCategory("voice_sources", "Âm thanh & giọng đọc", "Giọng trực tuyến và giọng AI ngoại tuyến", Icons.Outlined.RecordVoiceOver),
+    SettingsCategory("voice_sources", "Quản lý mô hình", "Tìm, cài đặt và quản lý giọng đọc", Icons.Outlined.RecordVoiceOver),
     SettingsCategory("backup", "Sao lưu dữ liệu", "Xuất và khôi phục thư viện, tiến độ và cài đặt", Icons.Outlined.Backup),
 )
 
@@ -297,10 +297,10 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
                                     onRestore = { restore.launch(arrayOf("application/json", "text/plain")) },
                                 )
                                 "voice_sources" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    TtsSourcesCard(vm, ui)
                                     OfflineTtsCard(vm, ui, onImport = {
                                         modelImport.launch(arrayOf("application/zip", "application/octet-stream"))
                                     })
+                                    TtsSourcesCard(vm, ui)
                                     TikTokTtsCard(vm, ui)
                                     GeminiCard(vm, ui)
                                     ZaloCard(vm, ui)
@@ -1274,6 +1274,9 @@ private fun SourceTile(icon: ImageVector, label: String, selected: Boolean, onCl
 private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Unit) {
     var showNetwork by rememberSaveable { mutableStateOf(false) }
     var showVBook by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var genderFilter by rememberSaveable { mutableStateOf("Tất cả") }
+    var showCloneInfo by rememberSaveable { mutableStateOf(false) }
     val cs = MaterialTheme.colorScheme
     // Danh mục có thể dài hàng chục model; không lọc/sắp xếp lại khi progress
     // tải hoặc một animation khác trên màn hình làm Compose recompose.
@@ -1285,6 +1288,21 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
             .filter { it.source == "network" && !it.installed }
             .sortedBy { it.name }
             .partition { it.fromVBook }
+    }
+    val filteredInstalled = installed.filter { model ->
+        val matchesQuery = query.isBlank() || model.name.contains(query, true) || model.id.contains(query, true)
+        val matchesGender = genderFilter == "Tất cả" || model.gender.equals(genderFilter, true)
+        matchesQuery && matchesGender
+    }
+    val filteredVBook = vbook.filter { model ->
+        val matchesQuery = query.isBlank() || model.name.contains(query, true) || model.id.contains(query, true)
+        val matchesGender = genderFilter == "Tất cả" || model.gender.equals(genderFilter, true)
+        matchesQuery && matchesGender
+    }
+    val filteredNetwork = network.filter { model ->
+        val matchesQuery = query.isBlank() || model.name.contains(query, true) || model.id.contains(query, true)
+        val matchesGender = genderFilter == "Tất cả" || model.gender.equals(genderFilter, true)
+        matchesQuery && matchesGender
     }
     Surface(
         shape = RoundedCornerShape(Radii.xl),
@@ -1298,12 +1316,87 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
                 }
                 Spacer(Modifier.width(13.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("AI ngoại tuyến", style = MaterialTheme.typography.titleMedium)
-                    Text("Giọng đọc trên thiết bị", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    Text("Giọng ngoại tuyến", style = MaterialTheme.typography.titleMedium)
+                    Text("Piper · Chạy trên thiết bị", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                 }
                 if (ui.offlineRuntimeReady) Icon(Icons.Filled.Check, "Trình chạy sẵn sàng", tint = cs.primary)
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(28.dp),
+                leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                placeholder = { Text("Tìm kiếm ${ui.offlineVoiceModels.size} giọng nói") },
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                listOf("Tất cả", "Nữ", "Nam", "Trung tính").forEach { value ->
+                    FilterChip(
+                        selected = genderFilter.equals(value, true),
+                        onClick = { genderFilter = if (value == "Tất cả") value else value },
+                        label = { Text(value) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("Giọng của tôi  0", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+            Surface(
+                onClick = { showCloneInfo = true },
+                shape = RoundedCornerShape(Radii.xl),
+                color = cs.surfaceVariant.copy(alpha = 0.55f),
+            ) {
+                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(48.dp).clip(CircleShape).background(cs.primaryContainer), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.Add, null, tint = cs.onPrimaryContainer)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Tạo giọng", style = MaterialTheme.typography.titleSmall, color = cs.primary)
+                        Text("Nhân bản giọng từ một đoạn ghi âm ngắn", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null)
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Đã cài  ${installed.size}", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+            if (installed.isEmpty()) {
+                Text("Chưa có giọng Piper nào được cài.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            }
+            filteredInstalled.forEach { model ->
+                Surface(shape = RoundedCornerShape(Radii.xl), color = cs.surfaceVariant.copy(alpha = 0.42f)) {
+                    Column {
+                        ListItem(
+                            headlineContent = { Text(model.name, maxLines = 1) },
+                            supportingContent = { Text("${model.gender} · Piper · Tiếng Việt") },
+                            leadingContent = { Icon(Icons.Outlined.RecordVoiceOver, null, tint = cs.primary) },
+                            trailingContent = { Text(if (ui.selectedVoice == "offline:${model.id}") "Đang dùng" else "Đã cài", color = cs.primary) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        )
+                        Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { vm.previewVoice("offline:${model.id}") }) {
+                                Icon(Icons.Outlined.PlayArrow, null); Spacer(Modifier.width(4.dp)); Text("Nghe thử")
+                            }
+                            Spacer(Modifier.weight(1f))
+                            TextButton(onClick = { vm.setVoice("offline:${model.id}") }) {
+                                Text(if (ui.selectedVoice == "offline:${model.id}") "Đang chọn" else "Dùng giọng")
+                            }
+                            IconButton(onClick = { vm.deleteOfflineVoice(model.id) }, enabled = ui.offlineTtsBusyId == null) {
+                                Icon(Icons.Outlined.Delete, "Xóa model", tint = cs.error)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Text("Thư viện giọng", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+            Text("Piper ONNX · tải về để dùng ngoại tuyến", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+
+            Spacer(Modifier.height(4.dp))
             Text("1. Trình chạy TTS", style = MaterialTheme.typography.titleSmall)
             Text(if (ui.offlineRuntimeReady) "Tài nguyên eSpeak-NG đã được cài trên thiết bị."
                 else "Bấm để tự động tải và cài tài nguyên cần thiết (~18 MB).",
@@ -1326,7 +1419,7 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
 
             if (ui.offlineRuntimeReady) {
                 HorizontalDivider(Modifier.padding(vertical = 14.dp), color = cs.outlineVariant)
-                Text("2. Model giọng đọc", style = MaterialTheme.typography.titleSmall)
+                Text("Model giọng đọc", style = MaterialTheme.typography.titleSmall)
                 Text("NovelBook tự chọn giọng vừa tải. Bạn cũng có thể nhập ZIP chứa model Piper ONNX và JSON.",
                     style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
@@ -1359,36 +1452,7 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
                         if (vbook.isEmpty()) {
                             Text("Đã tải tất cả giọng vBook.", style = MaterialTheme.typography.bodySmall)
                         }
-                        OfflineVoiceDownloads(vbook, vm, ui, initialLimit = vbook.size)
-                    }
-                }
-
-                if (installed.isNotEmpty()) {
-                    Spacer(Modifier.height(14.dp)); Text("Đã cài trên máy", style = MaterialTheme.typography.titleSmall)
-                    installed.forEach { model ->
-                        ListItem(
-                            headlineContent = { Text(model.name, maxLines = 1) },
-                            supportingContent = {
-                                val source = when {
-                                    model.fromVBook -> "vBook"
-                                    model.source == "device" -> "Nhập từ máy"
-                                    else -> "Tải từ mạng"
-                                }
-                                Text("${model.gender} · ${model.sizeMb} MB · $source")
-                            },
-                            leadingContent = { Icon(Icons.Outlined.CheckCircle, null, tint = cs.primary) },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { vm.setVoice("offline:${model.id}") }, enabled = ui.offlineTtsBusyId == null) {
-                                        Text(if (ui.selectedVoice == "offline:${model.id}") "Đang dùng" else "Dùng")
-                                    }
-                                    IconButton(onClick = { vm.deleteOfflineVoice(model.id) }, enabled = ui.offlineTtsBusyId == null) {
-                                        Icon(Icons.Outlined.Delete, "Xóa model")
-                                    }
-                                }
-                            },
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                        )
+                        OfflineVoiceDownloads(filteredVBook, vm, ui, initialLimit = filteredVBook.size)
                     }
                 }
 
@@ -1406,7 +1470,7 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
                     Column {
                         HorizontalDivider(Modifier.padding(vertical = 12.dp), color = cs.outlineVariant)
                         Text("Thư viện giọng ngoại tuyến", style = MaterialTheme.typography.titleSmall)
-                        OfflineVoiceDownloads(network, vm, ui, initialLimit = 6)
+                        OfflineVoiceDownloads(filteredNetwork, vm, ui, initialLimit = 6)
                     }
                 }
                 if (ui.offlineTtsBusyId == "__import__") {
@@ -1418,6 +1482,14 @@ private fun OfflineTtsCard(vm: PlayerViewModel, ui: UiState, onImport: () -> Uni
                 }
             }
         }
+    }
+    if (showCloneInfo) {
+        AlertDialog(
+            onDismissRequest = { showCloneInfo = false },
+            title = { Text("Nhân bản giọng nói") },
+            text = { Text("Chức năng nhân bản chưa khả dụng trong bản này. Cần tích hợp runtime và model clone giọng trước khi có thể nhập bản ghi âm và tạo giọng.") },
+            confirmButton = { TextButton(onClick = { showCloneInfo = false }) { Text("Đã hiểu") } },
+        )
     }
 }
 
