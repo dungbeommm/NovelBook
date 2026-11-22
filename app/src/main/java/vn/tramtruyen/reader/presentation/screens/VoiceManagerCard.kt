@@ -49,6 +49,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
     var tool by rememberSaveable { mutableStateOf(AllVoices) }
     var gender by rememberSaveable { mutableStateOf(AllVoices) }
     var availability by rememberSaveable { mutableStateOf(AllVoices) }
+    var singleVoiceDownloads by rememberSaveable { mutableStateOf(true) }
     var expanded by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var deleteModelId by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -97,6 +98,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
         val filtered = group.variants.filter { variant ->
             matches(languageLabel(variant.language), language) && matches(variant.tool, tool) &&
                 matches(genderLabel(variant.gender), gender) && matches(variant.availability, availability) &&
+                (!singleVoiceDownloads || variant.availability != Downloadable || variant.model?.model?.speakerCount == 1) &&
                 (search.isEmpty() || listOf(group.name, variant.label, variant.model?.model?.description.orEmpty())
                     .any { voiceSearchKey(it).contains(search) })
         }
@@ -147,6 +149,20 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
                     VoiceFilterMenu("Giới tính", gender, listOf(AllVoices) + genderOptions) { gender = it }
                     VoiceFilterMenu("Trạng thái", availability, listOf(AllVoices, Installed, Downloadable, Services)) { availability = it }
                 }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = singleVoiceDownloads,
+                        onClick = { singleVoiceDownloads = true },
+                        label = { Text("Tải một giọng") },
+                    )
+                    FilterChip(
+                        selected = !singleVoiceDownloads,
+                        onClick = { singleVoiceDownloads = false },
+                        label = { Text("Hiện cả gói dùng chung") },
+                    )
+                }
             }
         }
         val status = ui.voiceActionStatus ?: catalog.message
@@ -190,7 +206,9 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
             }
         }
         if (visible.isEmpty() && !catalog.loadingCatalog) {
-            item("empty") { Text("Không tìm thấy giọng phù hợp.", color = cs.onSurfaceVariant) }
+            item("empty") {
+                Text("Không tìm thấy giọng phù hợp.", color = cs.onSurfaceVariant)
+            }
         }
     }
 
@@ -366,6 +384,7 @@ private fun VoiceVariantRow(
             val details = listOfNotNull(
                 languageLabel(variant.language),
                 row?.model?.sizeBytes?.let(::formatModelSize),
+                row?.model?.speakerCount?.takeIf { it > 1 }?.let { "Gói $it giọng" },
                 if (current) "Đang dùng" else null,
             ).joinToString(" · ")
             Text(details, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
