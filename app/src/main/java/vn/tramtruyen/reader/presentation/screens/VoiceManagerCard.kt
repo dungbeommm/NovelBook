@@ -174,10 +174,16 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
                         Modifier.fillMaxWidth().padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.Top) {
                             Icon(Icons.Outlined.Memory, null, tint = cs.onTertiaryContainer)
-                            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                                Text("Runtime giọng ngoại tuyến", fontWeight = FontWeight.SemiBold, color = cs.onTertiaryContainer)
+                            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                                Text(
+                                    "Runtime giọng ngoại tuyến",
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = cs.onTertiaryContainer,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
                                 Text(
                                     when {
                                         catalog.runtimeDownloaded -> "Đã tải · có thể cài từng model giọng"
@@ -186,18 +192,26 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = cs.onTertiaryContainer,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            if (!catalog.runtimeDownloading) {
-                                FilledTonalButton(
-                                    onClick = { scope.launch { runCatching { VBookTtsRuntime.downloadRuntime(context) } } },
-                                    enabled = !catalog.runtimeDownloaded && "arm64-v8a" in android.os.Build.SUPPORTED_ABIS,
-                                ) {
-                                    Icon(Icons.Outlined.Download, null)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(if (catalog.runtimeDownloaded) "Đã tải" else "Tải runtime")
-                                }
-                            }
+                        }
+                        FilledTonalButton(
+                            onClick = { scope.launch { runCatching { VBookTtsRuntime.downloadRuntime(context) } } },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !catalog.runtimeDownloaded && !catalog.runtimeDownloading &&
+                                "arm64-v8a" in android.os.Build.SUPPORTED_ABIS,
+                        ) {
+                            Icon(Icons.Outlined.Download, null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                when {
+                                    catalog.runtimeDownloaded -> "Đã tải runtime"
+                                    catalog.runtimeDownloading -> "Đang tải runtime…"
+                                    else -> "Tải runtime"
+                                },
+                            )
                         }
                         if (catalog.runtimeDownloading) {
                             LinearProgressIndicator(

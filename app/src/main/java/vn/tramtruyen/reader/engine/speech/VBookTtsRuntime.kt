@@ -300,7 +300,7 @@ object VBookTtsRuntime {
                 }
                 mutableState.value = mutableState.value.copy(runtimeProgress = (index + 1f) / files.size)
             }
-            check(isRemoteRuntimeReady(context)) { "Runtime tải về chưa đầy đủ" }
+            check(hasRemoteRuntimeFiles(context)) { "Runtime tải về chưa đầy đủ" }
             remoteReady.writeText("1")
             mutableState.value = mutableState.value.copy(
                 runtimeReady = true,
@@ -327,9 +327,14 @@ object VBookTtsRuntime {
     private fun isRemoteRuntimeReady(context: Context): Boolean {
         val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET)
         val remoteReady = File(runtimeCache, "remote.ready")
+        return remoteReady.isFile && hasRemoteRuntimeFiles(context)
+    }
+
+    private fun hasRemoteRuntimeFiles(context: Context): Boolean {
+        val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET)
         val remoteDex = File(runtimeCache, "remote-dex")
         val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a")
-        return remoteReady.isFile && (1..4).all { File(remoteDex, "engine-$it.jar").let { file -> file.isFile && file.length() > 0L } } &&
+        return (1..4).all { File(remoteDex, "engine-$it.jar").let { file -> file.isFile && file.length() > 0L } } &&
             requiredNativeLibraries.all { File(remoteLibs, it).let { file -> file.isFile && file.length() > 0L } }
     }
 
