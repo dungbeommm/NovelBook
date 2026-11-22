@@ -75,8 +75,8 @@ data class VBookTtsUiState(
 
 /** Downloads VBook's public model catalog and runs the speech engines packaged with NovelBook. */
 object VBookTtsRuntime {
-    private const val CATALOG_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/models.json"
-    private const val COMMON_DATA_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/data.zip"
+    private const val CATALOG_URL = "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/tts/catalog/vbook-models.json"
+    private const val COMMON_DATA_URL = "https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/runtime/voice/runtime/common/data.zip"
     private const val DATA_VERSION = 3
     private val commonDataFiles = listOf("en-word_id.bin", "vi-word_id.bin", "sea_g2p.bin")
     private const val VIFAST_PAUSE_MS = 150
