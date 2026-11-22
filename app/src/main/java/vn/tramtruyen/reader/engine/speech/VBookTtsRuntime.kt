@@ -690,7 +690,7 @@ object VBookTtsRuntime {
                 if (!engine.accepts(format)) continue
                 val size = item.optLong("size_bytes")
                 if (size !in 1..(512L * 1024 * 1024)) continue
-                if (!downloadUrl.startsWith("https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/")) continue
+                if (!downloadUrl.startsWith("https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/") && !downloadUrl.startsWith("https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/tts/")) continue
                 if (!checksum.matches(Regex("[a-fA-F0-9]{64}"))) continue
                 add(VBookModel(
                     id = id, name = item.optString("name", id),
@@ -700,7 +700,7 @@ object VBookTtsRuntime {
                     gender = item.optString("gender", "multi"), modelType = modelType,
                     format = format, sampleRate = item.optInt("sample_rate", engine.sampleRate()),
                     previewUrl = item.optString("preview_url").takeIf {
-                        it.startsWith("https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/")
+                        it.startsWith("https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/") || it.startsWith("https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/tts/")
                     },
                     catalogSpeakerNames = item.optJSONArray("speaker_names")?.let { names ->
                         (0 until names.length()).map { names.optString(it) }.filter(String::isNotBlank)
