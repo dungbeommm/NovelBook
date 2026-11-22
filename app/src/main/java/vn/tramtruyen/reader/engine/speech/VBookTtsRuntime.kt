@@ -19,6 +19,12 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.Request
+import vn.tramtruyen.tts.Korva
+import vn.tramtruyen.tts.Piper
+import vn.tramtruyen.tts.Supertonic
+import vn.tramtruyen.tts.ViFast
+import vn.tramtruyen.tts.VieNeu
+import vn.tramtruyen.tts.VieNeuNano
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -51,6 +57,7 @@ data class VBookModel(
     val gender: String,
     val modelType: String,
     val format: String,
+    val sampleRate: Int,
 )
 
 data class VBookModelRow(
@@ -73,9 +80,10 @@ object VBookTtsRuntime {
     private const val COMMON_DATA_URL = "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/ai-tts/data.zip"
     private const val DATA_VERSION = 3
     private const val MODEL_CATALOG_ASSET = "reader_catalog/vbook-models.json"
-    private val requiredNativeLibraries = setOf(
-        "libncnn.so", "libpipertts.so", "libMNN.so", "libfasttts.so", "libaudiocpp.so", "libvieneutts.so",
-    )
+    private val engines = listOf(
+        Piper.ENGINE, ViFast.ENGINE, VieNeu.ENGINE, VieNeuNano.ENGINE, Supertonic.ENGINE, Korva.ENGINE,
+    ).associateBy { it.id() }
+    private val requiredNativeLibraries = engines.values.flatMap { it.libraries() }.toSet()
     private val mutableState = MutableStateFlow(VBookTtsUiState())
     val state: StateFlow<VBookTtsUiState> = mutableState.asStateFlow()
     private val engineLock = kotlinx.coroutines.sync.Mutex()
@@ -92,6 +100,7 @@ object VBookTtsRuntime {
         val runtime: RuntimeHandle,
         val instance: Any,
         val modelRate: Int,
+        val language: String,
     )
 
     fun initialize(context: Context) {
@@ -121,7 +130,10 @@ object VBookTtsRuntime {
                 }
             }
         }.getOrNull()
-        if (latest != null) publishCatalog(parseCatalog(latest), loading = false)
+        if (latest != null) {
+            val published = bundled?.let(::parseCatalog).orEmpty() + parseCatalog(latest)
+            publishCatalog(published.associateBy { it.id }.values.toList(), loading = false)
+        }
         else mutableState.value = mutableState.value.copy(loadingCatalog = false)
     }
 
@@ -188,9 +200,9 @@ object VBookTtsRuntime {
         val context = appContext ?: error("TTS chưa khởi tạo")
         val row = mutableState.value.models.firstOrNull { it.model.id == id } ?: error("Không tìm thấy model $id")
         val model = row.model
-        val archive = File(context.cacheDir, "vbook-$id.zip.part")
         val stage = File(context.cacheDir, "vbook-model-$id-${System.nanoTime()}")
         stage.mkdirs()
+        val archive = File(stage, "model.zip.part")
         try {
             val request = Request.Builder().url(model.downloadUrl).build()
             TtsUtil.http.newCall(request).execute().use { response ->
@@ -205,6 +217,7 @@ object VBookTtsRuntime {
                         val read = input.read(buffer)
                         if (read < 0) break
                         downloaded += read
+                        check(downloaded <= model.sizeBytes) { "Gói ${model.name} vượt kích thước trong danh mục" }
                         output.write(buffer, 0, read)
                         val progress = if (expectedLength > 0L) downloaded.toFloat() / expectedLength else -1f
                         updateModelRow(id) { it.copy(progress = progress.coerceAtLeast(0f)) }
@@ -214,15 +227,30 @@ object VBookTtsRuntime {
             val actualHash = sha256(archive)
             if (!actualHash.equals(model.checksum, ignoreCase = true)) error("Checksum của ${model.name} không khớp")
             val outputRoot = File(stage, "model").apply { mkdirs() }
-            unzipSafely(archive, outputRoot, model.sizeBytes + 12L * 1024 * 1024)
-            val configFile = File(outputRoot, "config.json")
-            if (!configFile.isFile || outputRoot.walkTopDown().none { it.isFile && (it.extension == "vmodel" || it.extension == "gguf") }) {
-                error("Gói ${model.name} thiếu config hoặc model")
+            val engine = engines.getValue(model.modelType)
+            unzipSafely(archive, outputRoot, (model.sizeBytes * 2).coerceAtMost(512L * 1024 * 1024))
+            check(engine.hasModelFiles(outputRoot)) { "Gói ${model.name} thiếu file model ${engine.format()}" }
+            val configType = JSONObject(File(outputRoot, "config.json").readText()).optString("model_type")
+            if (engine.format() == "mnn") {
+                check(configType == engine.id()) { "Cấu hình ${model.name} không khớp engine ${engine.name()}" }
             }
-            val target = modelDirectory(context, id)
-            target.deleteRecursively()
-            target.parentFile?.mkdirs()
-            if (!outputRoot.renameTo(target)) error("Không thể lưu model ${model.name}")
+            engineLock.lock()
+            try {
+                val target = modelDirectory(context, id)
+                if (activeEngine?.modelId == id) {
+                    releaseEngine(activeEngine)
+                    activeEngine = null
+                }
+                target.parentFile?.mkdirs()
+                val backup = File(stage, "previous-model")
+                if (target.exists() && !target.renameTo(backup)) error("Không thể thay thế model ${model.name}")
+                if (!outputRoot.renameTo(target)) {
+                    if (backup.exists() && !backup.renameTo(target)) backup.copyRecursively(target, overwrite = true)
+                    error("Không thể lưu model ${model.name}")
+                }
+            } finally {
+                engineLock.unlock()
+            }
             updateModelRow(id) { it.copy(progress = null) }
             refreshInstalledRows()
             mutableState.value = mutableState.value.copy(message = "Đã cài ${model.name}")
@@ -284,13 +312,13 @@ object VBookTtsRuntime {
             ?: error("Model VBook chưa được tải")
         engineLock.lock()
         try {
-            ensureCommonData(context)
+            if (engines.getValue(model.modelType).usesCommonData()) ensureCommonData(context)
             val engine = ensureEngine(context, model)
             val loader = engine.runtime.loader
             val continuationClass = loader.loadClass("kotlin.coroutines.Continuation")
             val method = engine.instance.javaClass.methods.firstOrNull { it.name == "d" && it.parameterTypes.size == 7 }
                 ?: error("API synthesize của VBook không tìm thấy")
-            val language = model.language.substringBefore('-').ifBlank { "vi" }
+            val language = engine.language
             val generated = invokeSuspend(engine.runtime, continuationClass, method, engine.instance, arrayOf(text, speaker, speed, false, false, language, null))
             val pcm = generated as? ShortArray ?: error("VBook trả về định dạng âm thanh không hợp lệ")
             val sampleRate = engine.instance.javaClass.getMethod("e").invoke(engine.instance) as? Int ?: engine.modelRate
@@ -304,42 +332,58 @@ object VBookTtsRuntime {
         val runtime = getRuntime(context)
         activeEngine?.takeIf { it.modelId == model.id && it.runtime === runtime }?.let { return it }
         activeEngine?.let(::releaseEngine)
-        if (model.modelType.lowercase(Locale.ROOT) !in setOf("piper", "vifast", "vieneu")) {
-            error("VBook engine chưa hỗ trợ ${model.modelType}")
+        activeEngine = null
+        val module = engines.getValue(model.modelType)
+        val missing = module.libraries().filterNot { File(runtime.nativeDirectory, it).isFile }
+        check(missing.isEmpty()) { "Nhập lại gói VBook 1.2.7 để bổ sung runtime ${module.name()}" }
+        val modelDir = modelDirectory(context, model.id)
+        check(module.hasModelFiles(modelDir)) { "Tải lại ${model.name}: thiếu file model ${module.format()}" }
+        val config = JSONObject(File(modelDir, "config.json").readText())
+        val sampleRateHint = config.optJSONObject("audio")?.optInt("sample_rate", model.sampleRate)
+            ?: config.optInt("sample_rate", model.sampleRate)
+        val languageList = config.optJSONArray("languages")
+        val languages = if (languageList != null) {
+            (0 until languageList.length()).map { languageList.getString(it) }
+        } else {
+            listOf(model.language)
         }
-        val config = JSONObject(File(modelDirectory(context, model.id), "config.json").readText())
-        val speakers = speakerNames(modelDirectory(context, model.id), model.speakerCount)
+        val language = if (model.language == "mul") languages.firstOrNull() ?: "en"
+            else model.language.substringBefore('-').ifBlank { "vi" }
+        val speakers = speakerNames(modelDir, model.speakerCount)
         val speakerMap = speakers.mapIndexed { index, name -> index to name }.toMap()
         val genderEnum = runtime.loader.loadClass("hm")
-        val modelEnum = runtime.loader.loadClass("fp")
         val gender = genderEnum.getMethod("valueOf", String::class.java).invoke(null, when (model.gender.lowercase(Locale.ROOT)) {
             "male" -> "MALE"
             "female" -> "FEMALE"
             else -> "MULTI"
         })
-        val engineType = modelEnum.getMethod("valueOf", String::class.java).invoke(null, model.modelType.uppercase(Locale.ROOT))
+        val engineType = module.runtimeType(runtime.loader)
         val metadata = runtime.loader.loadClass("nm")
             .getConstructor(String::class.java, String::class.java, String::class.java, Int::class.javaPrimitiveType,
                 Int::class.javaPrimitiveType, Map::class.java, genderEnum, Long::class.javaPrimitiveType,
-                modelEnum, String::class.java, List::class.java)
-            .newInstance(model.id, model.name, model.language, model.sizeBytes.let { config.optInt("sample_rate", 22050) },
-                model.speakerCount, speakerMap, gender, model.sizeBytes, engineType, model.format, listOf(model.language))
-        val modelDir = modelDirectory(context, model.id)
-        val pathFactory = runtime.loader.loadClass("bpa").methods.first { it.name == "g" && it.parameterTypes.size == 2 }
+                engineType.declaringJavaClass, String::class.java, List::class.java)
+            .newInstance(model.id, model.name, model.language, sampleRateHint,
+                model.speakerCount, speakerMap, gender, model.sizeBytes, engineType, model.format, languages)
+        val pathFactory = runtime.loader.loadClass("bpa").getMethod("g", String::class.java, Boolean::class.javaPrimitiveType)
         val path = pathFactory.invoke(null, modelDir.absolutePath, false)
-        val engineFactory = runtime.loader.loadClass("xtf").getMethod("g", modelEnum)
-        val instance = engineFactory.invoke(null, engineType) ?: error("VBook không tạo được engine ${model.modelType}")
+        val instance = module.createEngine(runtime.loader, engineType)
+            ?: error("VBook không tạo được engine ${module.name()}")
         val engineClass = instance.javaClass
         val loadMethod = engineClass.methods.first { it.name == "c" && it.parameterTypes.size == 3 }
         val continuationClass = runtime.loader.loadClass("kotlin.coroutines.Continuation")
-        val loaded = invokeSuspend(runtime, continuationClass, loadMethod, instance, arrayOf(metadata, path, null)) as? Boolean
-            ?: error("VBook không tải được model ${model.name}")
-        if (!loaded) {
-            val nativeError = runCatching { engineClass.getMethod("lastError").invoke(instance) as? String }.getOrNull()
-            error(nativeError ?: "VBook không nạp được model ${model.name}")
+        try {
+            val loaded = invokeSuspend(runtime, continuationClass, loadMethod, instance, arrayOf(metadata, path, null))
+            if (loaded != true) {
+                val nativeError = runCatching { engineClass.getMethod("lastError").invoke(instance) as? String }.getOrNull()
+                error(nativeError ?: "VBook không nạp được model ${model.name}")
+            }
+            val sampleRate = runCatching { engineClass.getMethod("e").invoke(instance) as? Int }.getOrNull()
+                ?: sampleRateHint
+            return LoadedEngine(model.id, runtime, instance, sampleRate, language).also { activeEngine = it }
+        } catch (error: Throwable) {
+            runCatching { engineClass.getMethod("a").invoke(instance) }
+            throw error
         }
-        val sampleRate = runCatching { engineClass.getMethod("e").invoke(instance) as? Int }.getOrNull() ?: config.optInt("sample_rate", 22050)
-        return LoadedEngine(model.id, runtime, instance, sampleRate).also { activeEngine = it }
     }
 
     private suspend fun invokeSuspend(
@@ -546,16 +590,20 @@ object VBookTtsRuntime {
                 val downloadUrl = item.optString("download_url", "")
                 val checksum = item.optString("checksum", "")
                 if (!id.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) continue
-                if (modelType !in setOf("piper", "vifast", "vieneu")) continue
+                val engine = engines[modelType] ?: continue
+                val format = item.optString("model_format", engine.format())
+                if (!engine.accepts(format)) continue
+                val size = item.optLong("size_bytes")
+                if (size !in 1..(512L * 1024 * 1024)) continue
                 if (!downloadUrl.startsWith("https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/")) continue
                 if (!checksum.matches(Regex("[a-fA-F0-9]{64}"))) continue
                 add(VBookModel(
                     id = id, name = item.optString("name", id),
-                    language = item.optString("language", ""), sizeBytes = item.optLong("size_bytes"),
+                    language = item.optString("language", ""), sizeBytes = size,
                     description = item.optString("description", ""), checksum = checksum,
                     downloadUrl = downloadUrl, speakerCount = item.optInt("num_speakers", 1).coerceAtLeast(1),
                     gender = item.optString("gender", "multi"), modelType = modelType,
-                    format = item.optString("model_format", "vmodel"),
+                    format = format, sampleRate = item.optInt("sample_rate", engine.sampleRate()),
                 ))
             }
         }
@@ -620,12 +668,7 @@ object VBookTtsRuntime {
     private fun runtimeDirectory(context: Context) = File(context.filesDir, "vbook-runtime")
     private fun modelDirectory(context: Context, id: String) = File(File(context.filesDir, "tts/models"), id)
 
-    private fun engineLabel(engine: String): String = when (engine.lowercase(Locale.ROOT)) {
-        "piper" -> "Piper"
-        "vifast" -> "ViFast"
-        "vieneu" -> "VieNeu"
-        else -> engine
-    }
+    internal fun engineLabel(engine: String): String = engines[engine]?.name() ?: engine
 
     private fun pcmToWav(pcm: ShortArray, sampleRate: Int): ByteArray {
         val dataLength = pcm.size * 2

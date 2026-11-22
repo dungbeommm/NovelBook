@@ -20,3 +20,11 @@ dependencyResolutionManagement {
 rootProject.name = "TramTruyenReader"
 include ":app"
 include ":gecko"
+
+include ":tts:core"
+include ":tts:Piper"
+include ":tts:ViFast"
+include ":tts:VieNeu"
+include ":tts:VieNeuNano"
+include ":tts:Supertonic"
+include ":tts:Korva"

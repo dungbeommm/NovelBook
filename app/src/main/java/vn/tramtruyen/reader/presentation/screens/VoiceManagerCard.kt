@@ -300,7 +300,7 @@ private fun VBookModelRowCard(row: VBookModelRow, context: Context, vm: PlayerVi
                 Column(Modifier.weight(1f)) {
                     Text(row.model.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
                     Text(
-                        listOf(row.model.description, row.model.modelType.uppercase(), "${row.voiceCount} giọng", formatModelSize(row.model.sizeBytes))
+                        listOf(row.model.description, VBookTtsRuntime.engineLabel(row.model.modelType), "${row.voiceCount} giọng", formatModelSize(row.model.sizeBytes))
                             .filter { it.isNotBlank() }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = cs.onSurfaceVariant,

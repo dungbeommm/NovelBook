@@ -690,5 +690,83 @@
     "avatar_url": "",
     "preview_url": "https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/vifast_manh_dung.m4a",
     "note": ""
+  },
+  {
+    "id": "korva",
+    "name": "Korva",
+    "language": "vi",
+    "size_bytes": 124790218,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/korva.zip",
+    "checksum": "1721785304a9de3707cb0616d5792ea0b5b8883ca863df6c96e053780c0955cc",
+    "sample_rate": 44100,
+    "num_speakers": 10,
+    "gender": "multi",
+    "model_type": "korva",
+    "model_format": "mnn"
+  },
+  {
+    "id": "supertonic-3",
+    "name": "Supertonic 3",
+    "language": "mul",
+    "size_bytes": 100272281,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/supertonic-3.zip",
+    "checksum": "c74aa339c544896ccd20375ac29fc0201de7083e912c5cd406664a99d8f2d689",
+    "sample_rate": 44100,
+    "num_speakers": 10,
+    "gender": "multi",
+    "model_type": "supertonic",
+    "model_format": "mnn"
+  },
+  {
+    "id": "vieneu-v3-nano-v2",
+    "name": "VieNeu v3 Nano v2",
+    "language": "vi",
+    "size_bytes": 83626933,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-nano-v2.zip",
+    "checksum": "121bada72dac5c16f6c4c626c657587688a9b376aebc0160e90d12a68fdc7d74",
+    "sample_rate": 24000,
+    "num_speakers": 29,
+    "gender": "multi",
+    "model_type": "vieneu_nano",
+    "model_format": "mnn"
+  },
+  {
+    "id": "vieneu-v3-nano-v3",
+    "name": "VieNeu v3 Nano v3",
+    "language": "vi",
+    "size_bytes": 81841204,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-nano-v3.zip",
+    "checksum": "703b00f4fcbcb2bc796ccfd5292c3c5fbdd6703b412437cf063031a441424cd4",
+    "sample_rate": 24000,
+    "num_speakers": 29,
+    "gender": "multi",
+    "model_type": "vieneu_nano",
+    "model_format": "mnn"
+  },
+  {
+    "id": "vieneu-v3-nano-v4",
+    "name": "VieNeu v3 Nano v4",
+    "language": "vi",
+    "size_bytes": 73839212,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-nano-v4.zip",
+    "checksum": "0cdd0dd2fee84bd878406cc7efbbe887604a5a9dcfa920588c6578bdd9abb422",
+    "sample_rate": 24000,
+    "num_speakers": 29,
+    "gender": "multi",
+    "model_type": "vieneu_nano",
+    "model_format": "mnn"
+  },
+  {
+    "id": "vieneu-v3-nano",
+    "name": "VieNeu v3 Nano",
+    "language": "vi",
+    "size_bytes": 73839210,
+    "download_url": "https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/vieneu-v3-nano.zip",
+    "checksum": "e4e7d9ced9a9d64fce581b0b112f5746bd4e5593155908f33a81b0335c99f78d",
+    "sample_rate": 24000,
+    "num_speakers": 29,
+    "gender": "multi",
+    "model_type": "vieneu_nano",
+    "model_format": "mnn"
   }
 ]

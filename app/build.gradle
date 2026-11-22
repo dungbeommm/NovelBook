@@ -114,6 +114,12 @@ android {
 }
 
 dependencies {
+    implementation project(":tts:Piper")
+    implementation project(":tts:ViFast")
+    implementation project(":tts:VieNeu")
+    implementation project(":tts:VieNeuNano")
+    implementation project(":tts:Supertonic")
+    implementation project(":tts:Korva")
     implementation "com.linkedin.dexmaker:dexmaker:2.28.6"
     implementation "com.google.guava:guava:33.3.1-android"
     implementation "com.google.android.play:feature-delivery:2.1.0"
