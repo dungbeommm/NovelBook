@@ -243,6 +243,7 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
             )
         }
     }
+               }
                 when (route) {
                     "voice_sources" -> VoiceManagerPage(vm, ui) {
                         if (navigationActive && !pageTransition.isRunning) selectedId = "voice_clone"
