@@ -52,7 +52,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
     var tool by rememberSaveable { mutableStateOf(AllVoices) }
     var gender by rememberSaveable { mutableStateOf(AllVoices) }
     var availability by rememberSaveable { mutableStateOf(AllVoices) }
-    var singleVoiceDownloads by rememberSaveable { mutableStateOf(true) }
+    var singleVoiceDownloads by rememberSaveable { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var deleteModelId by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -198,7 +198,7 @@ fun VoiceManagerPage(vm: PlayerViewModel, ui: UiState, onOpenClone: () -> Unit) 
                             }
                         }
                         FilledTonalButton(
-                            onClick = { scope.launch { runCatching { VBookTtsRuntime.downloadRuntime(context) } } },
+                            onClick = { scope.launch { runCatching { VBookTtsRuntime.downloadRuntime(context) }.onSuccess { vm.refreshVoiceCatalog() } } },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !catalog.runtimeDownloaded && !catalog.runtimeDownloading &&
                                 "arm64-v8a" in android.os.Build.SUPPORTED_ABIS,

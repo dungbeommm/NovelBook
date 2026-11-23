@@ -3,6 +3,7 @@ package vn.tramtruyen.reader.engine.speech
 import android.content.Context
 import android.os.Build
 import dalvik.system.DexClassLoader
+import dalvik.system.InMemoryDexClassLoader
 import com.android.dx.Code
 import com.android.dx.DexMaker
 import com.android.dx.Local
@@ -33,6 +34,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
@@ -93,6 +95,7 @@ object VBookTtsRuntime {
     private val mutableState = MutableStateFlow(VBookTtsUiState())
     val state: StateFlow<VBookTtsUiState> = mutableState.asStateFlow()
     private val engineLock = kotlinx.coroutines.sync.Mutex()
+    private val runtimeInitLock = Any()
     private val bridgeIds = AtomicInteger()
     private val bridgeClasses = WeakHashMap<ClassLoader, Class<*>>()
     @Volatile private var appContext: Context? = null
@@ -301,7 +304,11 @@ object VBookTtsRuntime {
                 mutableState.value = mutableState.value.copy(runtimeProgress = (index + 1f) / files.size)
             }
             check(hasRemoteRuntimeFiles(context)) { "Runtime tải về chưa đầy đủ" }
+            lockRuntimeFiles(remoteDex, remoteLibs)
             remoteReady.writeText("1")
+            synchronized(runtimeInitLock) {
+                if (activeEngine == null) runtimeHandle = null
+            }
             mutableState.value = mutableState.value.copy(
                 runtimeReady = true,
                 runtimeDownloaded = true,
@@ -322,7 +329,13 @@ object VBookTtsRuntime {
 
     private fun isRuntimeReady(context: Context): Boolean =
         "arm64-v8a" in Build.SUPPORTED_ABIS &&
-            (bundledLibraries.containsAll(requiredNativeLibraries) || isRemoteRuntimeReady(context))
+            (hasBundledRuntime(context) || isRemoteRuntimeReady(context))
+
+    private fun hasBundledRuntime(context: Context): Boolean {
+        if (!bundledLibraries.containsAll(requiredNativeLibraries)) return false
+        val assets = runCatching { context.assets.list(RUNTIME_ASSET)?.toSet().orEmpty() }.getOrDefault(emptySet())
+        return (1..4).all { "engine-$it.jar" in assets }
+    }
 
     private fun isRemoteRuntimeReady(context: Context): Boolean {
         val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET)
@@ -457,9 +470,11 @@ object VBookTtsRuntime {
                 when (called.name) {
                     "getContext" -> coroutineContext
                     "resumeWith" -> {
-                        val result = values?.firstOrNull()
-                        val failure = unwrapFailure(result)
-                        if (failure != null) completion.resumeWithException(failure) else completion.resume(result)
+                        if (completion.isActive) {
+                            val result = values?.firstOrNull()
+                            val failure = unwrapFailure(result)
+                            if (failure != null) completion.resumeWithException(failure) else completion.resume(result)
+                        }
                         null
                     }
                     "toString" -> "NovelBook VBook continuation"
@@ -474,11 +489,11 @@ object VBookTtsRuntime {
             callArgs[callArgs.lastIndex] = bridge
             val immediate = method.invoke(target, *callArgs)
             val suspended = runtime.loader.loadClass("oz3").getField("a").get(null)
-            if (immediate !== suspended) completion.resume(immediate)
+            if (immediate !== suspended && completion.isActive) completion.resume(immediate)
         } catch (error: Throwable) {
             val actual = if (error is InvocationTargetException) error.targetException else error
             if (actual is kotlinx.coroutines.CancellationException) throw actual
-            completion.resumeWithException(actual)
+            if (completion.isActive) completion.resumeWithException(actual)
         }
     }
 
@@ -486,8 +501,8 @@ object VBookTtsRuntime {
         synchronized(bridgeClasses) {
             bridgeClasses[loader]?.let { return it }
             val id = bridgeIds.incrementAndGet()
-            val className = "vn.tramtruyen.reader.engine.speech.generated.VBookContinuation$id"
-            val descriptor = "L${className.replace('.', '/')};"
+            val className = "VBookContinuation$id"
+            val descriptor = "L$className;"
             val bridgeType = TypeId.get<Any>(descriptor)
             val superType = TypeId.get<Any>("Lev3;")
             val callbackType = TypeId.get<Any>("Lkotlin/coroutines/Continuation;")
@@ -503,78 +518,130 @@ object VBookTtsRuntime {
             val invoke = bridgeType.getMethod(objectType, "invokeSuspend", objectType)
             val invokeCode = maker.declare(invoke, java.lang.reflect.Modifier.PUBLIC)
             invokeCode.returnValue(invokeCode.getParameter(0, objectType))
-            val output = File(appContext?.codeCacheDir ?: File("."), "vbook-bridge").apply { mkdirs() }
-            val generatedLoader = maker.generateAndLoad(loader, output)
+            val dexBytes = maker.generate()
+            val generatedLoader = InMemoryDexClassLoader(ByteBuffer.wrap(dexBytes), loader)
             return generatedLoader.loadClass(className).also { bridgeClasses[loader] = it }
         }
     }
 
     private fun getRuntime(context: Context): RuntimeHandle {
         runtimeHandle?.let { return it }
-        val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET).apply { mkdirs() }
-        val remoteDex = File(runtimeCache, "remote-dex")
-        val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a")
-        val remoteReady = File(runtimeCache, "remote.ready")
-        if (!remoteReady.isFile) {
-            runCatching {
-                remoteDex.mkdirs(); remoteLibs.mkdirs()
+        synchronized(runtimeInitLock) {
+            runtimeHandle?.let { return it }
+            val runtimeCache = File(context.codeCacheDir, RUNTIME_ASSET).apply { mkdirs() }
+            val remoteDex = File(runtimeCache, "remote-dex")
+            val remoteLibs = File(runtimeCache, "remote-libs/arm64-v8a")
+            val remoteReady = File(runtimeCache, "remote.ready")
+            val bundledAvailable = hasBundledRuntime(context)
+            var useRemote = isRemoteRuntimeReady(context)
+            if (!useRemote && !bundledAvailable) {
+                remoteDex.mkdirs()
+                remoteLibs.mkdirs()
+                remoteReady.delete()
                 (1..4).forEach { index ->
                     val name = "engine-$index.jar"
-                    downloadRuntimeFile("$RUNTIME_REMOTE_BASE/dex/$name", File(remoteDex, name))
+                    val destination = File(remoteDex, name)
+                    if (!destination.isFile || destination.length() == 0L) {
+                        downloadRuntimeFile("$RUNTIME_REMOTE_BASE/dex/$name", destination)
+                    }
                 }
                 requiredNativeLibraries.forEach { name ->
-                    downloadRuntimeFile("$RUNTIME_REMOTE_BASE/lib/arm64-v8a/$name", File(remoteLibs, name))
-                }
-                remoteReady.writeText("1")
-            }
-        }
-        val useRemote = remoteReady.isFile &&
-            (1..4).all { File(remoteDex, "engine-$it.jar").isFile } &&
-            requiredNativeLibraries.all { File(remoteLibs, it).isFile }
-        val dexArchives = (1..4).map { index ->
-            val name = "engine-$index.jar"
-            if (useRemote) return@map File(remoteDex, name)
-            val destination = File(runtimeCache, name)
-            if (!destination.isFile) {
-                val temporary = File.createTempFile("engine-", ".jar", runtimeCache)
-                try {
-                    FileOutputStream(temporary).use { output ->
-                        check(temporary.setReadOnly()) { "Không thể khóa mã giọng đọc" }
-                        context.assets.open("$RUNTIME_ASSET/$name").use { input -> input.copyTo(output) }
+                    val destination = File(remoteLibs, name)
+                    if (!destination.isFile || destination.length() == 0L) {
+                        downloadRuntimeFile("$RUNTIME_REMOTE_BASE/lib/arm64-v8a/$name", destination)
                     }
-                    check(temporary.renameTo(destination)) { "Không thể chuẩn bị mã giọng đọc" }
-                } finally {
-                    temporary.delete()
                 }
+                check(hasRemoteRuntimeFiles(context)) { "Runtime tải về chưa đầy đủ" }
+                lockRuntimeFiles(remoteDex, remoteLibs)
+                remoteReady.writeText("1")
+                useRemote = true
             }
-            destination
+            if (useRemote) {
+                lockRuntimeFiles(remoteDex, remoteLibs)
+            }
+            val dexArchives = (1..4).map { index ->
+                val name = "engine-$index.jar"
+                if (useRemote) {
+                    return@map File(remoteDex, name).apply {
+                        setReadable(true, true)
+                        setReadOnly()
+                    }
+                }
+                val destination = File(runtimeCache, name)
+                if (!destination.isFile || destination.length() == 0L) {
+                    val temporary = File.createTempFile("engine-", ".jar", runtimeCache)
+                    try {
+                        FileOutputStream(temporary).use { output ->
+                            context.assets.open("$RUNTIME_ASSET/$name").use { input -> input.copyTo(output) }
+                        }
+                        temporary.setReadable(true, true)
+                        check(temporary.setReadOnly()) { "Không thể khóa mã giọng đọc" }
+                        if (destination.exists()) {
+                            destination.setWritable(true)
+                            destination.delete()
+                        }
+                        check(temporary.renameTo(destination)) { "Không thể chuẩn bị mã giọng đọc" }
+                    } finally {
+                        if (temporary.exists()) temporary.delete()
+                    }
+                }
+                destination.setReadable(true, true)
+                check(destination.setReadOnly()) { "Không thể khóa mã giọng đọc" }
+                destination
+            }
+            val info = context.applicationInfo
+            val apkLibraryPaths = listOfNotNull(info.sourceDir, *info.splitSourceDirs.orEmpty())
+                .map { "$it!/lib/arm64-v8a" }
+            val librarySearchPaths = buildList {
+                if (useRemote) add(remoteLibs.absolutePath)
+                add(info.nativeLibraryDir)
+                addAll(apkLibraryPaths)
+            }
+            val loader = VBookDexClassLoader(
+                dexArchives.joinToString(File.pathSeparator) { it.absolutePath },
+                runtimeCache.absolutePath,
+                librarySearchPaths.joinToString(File.pathSeparator),
+                context.classLoader,
+            )
+            val appClass = loader.loadClass("q21")
+            val appContextField = appClass.getDeclaredField("m").apply { isAccessible = true }
+            appContextField.set(null, context.applicationContext)
+            return RuntimeHandle(loader).also { runtimeHandle = it }
         }
-        val info = context.applicationInfo
-        val libraryPaths = listOfNotNull(info.sourceDir, *info.splitSourceDirs.orEmpty())
-            .map { "$it!/lib/arm64-v8a" }
-            .toMutableList()
-        if (useRemote) libraryPaths += remoteLibs.absolutePath
-        val loader = VBookDexClassLoader(
-            dexArchives.joinToString(File.pathSeparator) { it.absolutePath },
-            runtimeCache.absolutePath,
-            (listOf(info.nativeLibraryDir) + libraryPaths).joinToString(File.pathSeparator),
-            context.classLoader,
-        )
-        val appClass = loader.loadClass("q21")
-        val appContextField = appClass.getDeclaredField("m").apply { isAccessible = true }
-        appContextField.set(null, context.applicationContext)
-        return RuntimeHandle(loader).also { runtimeHandle = it }
+    }
+
+    private fun lockRuntimeFiles(remoteDex: File, remoteLibs: File) {
+        (1..4).forEach { index ->
+            File(remoteDex, "engine-$index.jar").apply {
+                setReadable(true, true)
+                check(setReadOnly()) { "Không thể khóa mã giọng đọc" }
+            }
+        }
+        requiredNativeLibraries.forEach { name ->
+            File(remoteLibs, name).apply {
+                setReadable(true, true)
+                setReadOnly()
+            }
+        }
     }
 
     private fun downloadRuntimeFile(url: String, destination: File) {
         val temporary = File(destination.parentFile, destination.name + ".part")
-        TtsUtil.http.newCall(Request.Builder().url(url).build()).execute().use { response ->
-            if (!response.isSuccessful) error("Không tải được runtime giọng đọc (${response.code})")
-            val body = response.body ?: error("Runtime giọng đọc rỗng")
-            body.byteStream().use { input -> FileOutputStream(temporary).use { output -> input.copyTo(output) } }
+        try {
+            TtsUtil.http.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (!response.isSuccessful) error("Không tải được runtime giọng đọc (${response.code})")
+                val body = response.body ?: error("Runtime giọng đọc rỗng")
+                body.byteStream().use { input -> FileOutputStream(temporary).use { output -> input.copyTo(output) } }
+            }
+            check(temporary.length() > 0L) { "Runtime giọng đọc rỗng" }
+            if (destination.exists()) {
+                destination.setWritable(true)
+                destination.delete()
+            }
+            check(temporary.renameTo(destination)) { "Không thể lưu runtime giọng đọc" }
+        } finally {
+            if (temporary.exists()) temporary.delete()
         }
-        check(temporary.length() > 0L) { "Runtime giọng đọc rỗng" }
-        check(temporary.renameTo(destination)) { "Không thể lưu runtime giọng đọc" }
     }
 
     private class VBookDexClassLoader(dexPath: String, optimizedDirectory: String, librarySearchPath: String, parent: ClassLoader) :
@@ -658,7 +725,7 @@ object VBookTtsRuntime {
     private fun publishCatalog(models: List<VBookModel>, loading: Boolean) {
         val context = appContext
         val old = mutableState.value.models.associateBy { it.model.id }
-        val ids = context?.let { ctx -> File(ctx.filesDir, "tts/models").listFiles()?.filter { it.isDirectory }?.map { it.name }?.toSet().orEmpty() }.orEmpty()
+        val ids = context?.let { ctx -> File(ctx.filesDir, "tts/models").listFiles()?.filter { it.isDirectory && File(it, "config.json").isFile }?.map { it.name }?.toSet().orEmpty() }.orEmpty()
         mutableState.value = mutableState.value.copy(
             models = models.map { model ->
                 val installed = model.id in ids
@@ -688,7 +755,7 @@ object VBookTtsRuntime {
                 if (!engine.accepts(format)) continue
                 val size = item.optLong("size_bytes")
                 if (size !in 1..(512L * 1024 * 1024)) continue
-                if (!downloadUrl.startsWith("https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/")) continue
+                if (!downloadUrl.startsWith("https://github.com/Darkrai9x/vbook-settings/releases/download/ai-tts/") && !downloadUrl.startsWith("https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/tts/")) continue
                 if (!checksum.matches(Regex("[a-fA-F0-9]{64}"))) continue
                 add(VBookModel(
                     id = id, name = item.optString("name", id),
@@ -698,7 +765,7 @@ object VBookTtsRuntime {
                     gender = item.optString("gender", "multi"), modelType = modelType,
                     format = format, sampleRate = item.optInt("sample_rate", engine.sampleRate()),
                     previewUrl = item.optString("preview_url").takeIf {
-                        it.startsWith("https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/")
+                        it.startsWith("https://raw.githubusercontent.com/Darkrai9x/vbook-settings/main/tts/sample/") || it.startsWith("https://huggingface.co/buckets/uri410/NovelBook_Cloud/resolve/tts/")
                     },
                     catalogSpeakerNames = item.optJSONArray("speaker_names")?.let { names ->
                         (0 until names.length()).map { names.optString(it) }.filter(String::isNotBlank)

@@ -44,3 +44,12 @@
 -dontwarn com.google.android.gms.common.api.ComplianceOptions
 -dontwarn com.google.android.gms.common.wrappers.AttributionSourceWrapper
 
+# Offline VBook TTS runtime (reflection + DexMaker bridge + dynamic DexClassLoader).
+# Keep kotlin.coroutines.Continuation so -adaptclassstrings never rewrites the
+# class-name literal used to load Continuation from VBook's embedded DEX.
+-keep class kotlin.coroutines.Continuation { *; }
+-keep class com.android.dx.** { *; }
+-dontwarn com.android.dx.**
+-keep class vn.tramtruyen.tts.** { *; }
+-keep class vn.tramtruyen.reader.engine.speech.VBookTtsRuntime { *; }
+-keep class vn.tramtruyen.reader.engine.speech.VBookTtsRuntime$* { *; }
