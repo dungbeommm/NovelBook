@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import vn.tramtruyen.reader.model.ColorMode
@@ -112,15 +113,24 @@ private data class SettingsCategory(
     val icon: ImageVector,
 )
 
-private val SETTINGS_CATEGORIES = listOf(
-    SettingsCategory("browser", "Trình duyệt & kết nối", "Trình duyệt, chặn quảng cáo, DNS và WARP", Icons.Outlined.Language),
-    SettingsCategory("appearance", "Giao diện", "Chủ đề, màu sắc, chuyển động và rung", Icons.Outlined.Palette),
-    SettingsCategory("language_content", "Ngôn ngữ & nội dung", "Ngôn ngữ trang và cách lấy nội dung chương", Icons.Outlined.Translate),
-    SettingsCategory("pronunciation", "Cách đọc", "Quy tắc phát âm tùy chỉnh cho TTS", Icons.Outlined.RecordVoiceOver),
-    SettingsCategory("voice_sources", "Giọng đọc & runtime ngoại tuyến", "Tải runtime và cài từng model giọng đọc", Icons.Outlined.RecordVoiceOver),
-    SettingsCategory("voice_providers", "Nguồn giọng đọc", "Bật nguồn giọng và cấu hình dịch vụ", Icons.Outlined.RecordVoiceOver),
-    SettingsCategory("backup", "Sao lưu dữ liệu", "Xuất và khôi phục thư viện, tiến độ và cài đặt", Icons.Outlined.Backup),
+private val SETTINGS_CATEGORY_GROUPS = listOf(
+listOf(
+SettingsCategory("appearance", "Giao diện", "Chủ đề tối, màu sắc, hiệu ứng", Icons.Outlined.Palette),
+SettingsCategory("language_content", "Ngôn ngữ & nội dung", "Ngôn ngữ đọc, trích xuất chương", Icons.Outlined.Language),
+),
+listOf(
+SettingsCategory("voice_sources", "Giọng đọc AI", "Runtime, mô hình giọng ngoại tuyến", Icons.Outlined.GraphicEq),
+SettingsCategory("voice_providers", "Nguồn giọng đọc", "Edge, TikTok, Gemini, Zalo", Icons.Outlined.RecordVoiceOver),
+SettingsCategory("pronunciation", "Cách đọc", "Quy tắc phát âm tùy chỉnh", Icons.Outlined.Spellcheck),
+SettingsCategory("browser", "Trình duyệt & kết nối", "Chặn quảng cáo, DNS, WARP", Icons.Outlined.Public),
+),
+listOf(
+SettingsCategory("backup", "Sao lưu & khôi phục", "Xuất, nhập dữ liệu ứng dụng", Icons.Outlined.Backup),
+),
 )
+
+private val SETTINGS_CATEGORIES = SETTINGS_CATEGORY_GROUPS.flatten()
+
 
 /** Screen-local type scale: improve readability without changing the reader/player. */
 @Composable
@@ -202,40 +212,37 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
         pageStateHolder.SaveableStateProvider(route ?: "settings_categories") {
             Column(Modifier.fillMaxSize()) {
                 val voicePage = route == "voice_sources" || route == "voice_clone"
-                Surface(color = cs.surface, modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = SettingsOuterPadding, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (voicePage) FilledTonalIconButton(
-                            onClick = navigateBack,
-                            enabled = navigationActive && !pageTransition.isRunning,
-                        ) {
-                            Icon(Icons.Outlined.ArrowBack, contentDescription = "Quay lại")
-                        } else IconButton(
-                            onClick = navigateBack,
-                            enabled = navigationActive && !pageTransition.isRunning,
-                        ) {
-                            Icon(Icons.Outlined.ArrowBack,
-                                contentDescription = "Quay lại")
-                        }
-                        if (!voicePage) Spacer(Modifier.width(12.dp))
-                        if (!voicePage) Column(Modifier.weight(1f)) {
-                            Text(
-                                text = selected?.title ?: "Cài đặt",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = selected?.subtitle ?: "Chọn một nhóm để mở tùy chỉnh",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = cs.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                if (!voicePage) HorizontalDivider(color = cs.outlineVariant.copy(alpha = .55f))
+               Surface(color = cs.surface, modifier = Modifier.fillMaxWidth()) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SettingsOuterPadding, vertical = if (selected == null) 12.dp else 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (selected != null) {
+            FilledTonalIconButton(
+                onClick = navigateBack,
+                enabled = navigationActive && !pageTransition.isRunning,
+            ) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "Quay lại")
+            }
+        } else {
+            IconButton(
+                onClick = navigateBack,
+                enabled = navigationActive && !pageTransition.isRunning,
+            ) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "Quay lại")
+            }
+        }
+        if (!voicePage) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = selected?.title ?: "Cài đặt",
+                style = if (selected == null) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = cs.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
                 when (route) {
                     "voice_sources" -> VoiceManagerPage(vm, ui) {
                         if (navigationActive && !pageTransition.isRunning) selectedId = "voice_clone"
@@ -253,24 +260,40 @@ private fun SettingsContent(vm: PlayerViewModel, ui: UiState) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         if (selected == null) {
-                            item {
-                                Text(
-                                    "Danh mục cài đặt",
-                                    modifier = Modifier.padding(bottom = 2.dp),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = cs.onSurfaceVariant,
-                                )
+                        
+                        item {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        SETTINGS_CATEGORY_GROUPS.forEach { group ->
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                group.forEachIndexed { index, category ->
+                    val topRadius = if (index == 0) 20.dp else 4.dp
+                    val bottomRadius = if (index == group.lastIndex) 20.dp else 4.dp
+                    SettingsCategoryTile(
+                        category = category,
+                        shape = RoundedCornerShape(
+                            topStart = topRadius,
+                            topEnd = topRadius,
+                            bottomStart = bottomRadius,
+                            bottomEnd = bottomRadius,
+                        ),
+                        onClick = {
+                            if (navigationActive && !pageTransition.isRunning) {
+                                haptics.tap()
+                                selectedId = category.id
                             }
-                            items(SETTINGS_CATEGORIES, key = { it.id }) { category ->
-                                SettingsCategoryTile(category = category, onClick = {
-                                    if (navigationActive && !pageTransition.isRunning) {
-                                        haptics.tap()
-                                        selectedId = category.id
-                                    }
-                                })
-                            }
-                        } else {
+                        },
+                    )
+                }
+            }
+        }
+    }
+                        }} else {
                             item(key = "settings_content_${selected.id}") {
                                 when (selected.id) {
                                     "browser" -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -360,47 +383,47 @@ private fun Modifier.settingsBackSwipe(enabled: Boolean, onBack: () -> Unit): Mo
 }
 
 @Composable
-private fun SettingsCategoryTile(category: SettingsCategory, onClick: () -> Unit) {
+private fun SettingsCategoryTile(
+    category: SettingsCategory,
+    shape: RoundedCornerShape,
+    onClick: () -> Unit,
+) {
     val cs = MaterialTheme.colorScheme
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Radii.xl),
-        color = cs.surfaceContainer,
+        shape = shape,
+        color = cs.surfaceContainerLow,
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(cs.primaryContainer),
-                contentAlignment = Alignment.Center,
+            Icon(
+                category.icon,
+                contentDescription = null,
+                tint = cs.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Icon(category.icon, null, tint = cs.onPrimaryContainer)
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
                 Text(
                     category.title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    color = cs.onSurface,
                 )
-                Spacer(Modifier.height(4.dp))
                 Text(
                     category.subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = "Mở ${category.title}",
-                tint = cs.onSurfaceVariant,
-                modifier = Modifier.padding(start = 8.dp).size(20.dp),
-            )
         }
     }
 }
