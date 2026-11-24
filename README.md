@@ -14,7 +14,7 @@
 <p align="center"><a href="https://github.com/dungbeommm/NovelBook/releases/tag/v0.02-beta"><strong>⬇ Tải NovelBook beta mới nhất</strong></a></p>
 
 > [!NOTE]
-> NovelBook đang ở giai đoạn beta. Bản hiện tại là **0.10 beta**.
+> NovelBook đang ở giai đoạn beta. Bản hiện tại là **0.02 beta**.
 
 ## Tính năng
 
